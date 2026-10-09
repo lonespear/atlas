@@ -559,7 +559,7 @@
       const meth = UI.segmented(controls, { label: 'Method', options: [{ value: 'fisher', label: 'Fisher / IRLS' }, { value: 'newton', label: 'Newton' }, { value: 'grad', label: 'Gradient' }], value: 'fisher', onChange: restart });
       const lr = UI.slider(controls, { label: 'Gradient step size (× 1/n)', min: 0.05, max: 5, step: 0.05, value: 1, log: true, onChange: restart, fmt: v => v.toFixed(2) });
       const row = UI.h('div', 'btn-row', controls);
-      const halve = UI.toggle(controls, { label: 'Step-halving (accept a step only if $\ell$ increases)', value: true, onChange: restart });
+      const halve = UI.toggle(controls, { label: 'Step-halving (accept a step only if $\\ell$ increases)', value: true, onChange: restart });
       UI.button(row, 'Step', () => { doStep(); draw(); }, { primary: true });
       let tacc = 0;
       const loop = ctx.loop(dt => { tacc += dt; if (tacc > 0.35) { tacc = 0; const more = doStep(); draw(); if (!more) return false; } });

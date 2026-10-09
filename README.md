@@ -23,6 +23,7 @@ python -m http.server 8840      # then open http://127.0.0.1:8840
 | `js/core/` | Registry, numerics (`Atlas.S`), SVG plotting (`Atlas.Plot`), controls (`Atlas.UI`) |
 | `js/app.js` | Router, views, knowledge map, method survey, search |
 | `tools/catalog.json` | The planned topic universe (ids, order, chapter refs) |
+| `tools/scan-escapes.js` | Finds single-backslash TeX in lab string literals (`'ho'` → carriage return) |
 | `tools/check.js` | Validator: schema, links, KaTeX, tag balance, lab smoke tests (`npm install` first) |
 
 See `AUTHORING.md` to add or edit topics.

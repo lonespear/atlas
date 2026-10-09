@@ -5,7 +5,8 @@ The Atlas is a static site (no build step). Content and labs are plain JS files 
 `js/labs/resampling.js`.** Read both before writing anything. Match their depth and style.
 
 Run `node tools/check.js --only <file-prefix>` (e.g. `--only evt`, `--only deep-1`) until it reports
-0 errors. Preview with `python -m http.server 8840` from the repo root → http://127.0.0.1:8840/#/t/<id>.
+0 errors, and `node tools/scan-escapes.js` (catches `'ho'`-style single-backslash TeX in lab strings,
+which JS turns into control characters). Preview with `python -m http.server 8840` from the repo root → http://127.0.0.1:8840/#/t/<id>.
 
 ## Files
 
