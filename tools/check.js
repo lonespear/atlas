@@ -126,6 +126,12 @@ for (const t of A.topics) {
 const doc = window.document;
 function checkMath(where, htmlStr) {
   if (!htmlStr) return;
+  // "<" followed by a letter/"!"/"/" inside math is parsed by the browser as an HTML tag and eats the formula.
+  for (const m of htmlStr.matchAll(/\$\$([\s\S]+?)\$\$|\$([^$]+?)\$/g)) {
+    const tex = m[1] || m[2];
+    const bad = tex.match(/<[A-Za-z!\/]/);
+    if (bad) err(where, `"<" directly followed by "${bad[0][1]}" inside math (browser reads it as an HTML tag) — write "< ${bad[0][1]}" or \\lt: ` + JSON.stringify(tex.slice(0, 80)));
+  }
   const div = doc.createElement('div');
   div.innerHTML = htmlStr;
   window.Atlas.UI.math(div);
