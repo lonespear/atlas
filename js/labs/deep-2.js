@@ -671,7 +671,7 @@
 
   Atlas.lab('gans-training', {
     title: 'Training a 1-D GAN: coverage, collapse and the optimal discriminator',
-    blurb: 'Generator and discriminator are small tanh networks trained by alternating Adam steps with hand-written backpropagation. Left: data density (line) vs a histogram of generator samples. Right: the current $D(x)$ against $D^*=p_{\\text{data}}/(p_{\\text{data}}+p_g)$. Several modes and the saturating loss often end in collapse onto one or two modes; compare the non-saturating and WGAN (weight-clipped critic) losses, more critic steps, and different seeds.',
+    blurb: 'Generator and discriminator are small tanh networks trained by alternating Adam steps with hand-written backpropagation. Left: data density (line) vs a histogram of generator samples. Right: the current $D(x)$ against $D^*=p_{\\text{data}}/(p_{\\text{data}}+p_g)$. Training is a game, not a descent: watch modes get dropped and recovered as $D$ chases the generator. The rare 10% mode of the unequal mixture is the one most often lost (reverse-KL behaviour), and the crude weight-clipped WGAN critic is often the least stable here. Try several seeds.',
     mount(el, ctx) {
       const { controls, stage, stats } = UI.layout(el);
       const data = UI.select(controls, { label: 'Data', options: Object.keys(GAN_DATA).map(k => ({ value: k, label: GAN_DATA[k].label })), value: 'three', onChange: reset });
@@ -938,12 +938,13 @@
 
   Atlas.lab('diffusion-models-reverse', {
     title: 'Sampling backwards: reverse SDE vs probability-flow ODE',
-    blurb: 'Particles start from $\\N(0,I)$ at $t=1$ and are integrated back to $t=10^{-3}$ using the <em>exact</em> score of the noised mixture, so all error is discretization error. The reverse SDE (Euler–Maruyama) injects noise and includes a Langevin-like correction; the probability-flow ODE (Euler) is deterministic — follow the highlighted trajectories. Cut the number of steps to 5–20 and compare the samplers; the sliced $W_1$ is shown next to the noise floor between two exact samples.',
+    blurb: 'Particles start from $\\N(0,I)$ at $t=1$ and are integrated back to $t=10^{-3}$ using the <em>exact</em> score of the noised mixture, so all error is discretization error. The reverse SDE (Euler–Maruyama) injects noise and includes a Langevin-like correction; the probability-flow ODE (Euler) is deterministic — follow the highlighted trajectories. With the exact score the ODE is at least as accurate, even at 10–20 steps. Now mis-scale the score ($c\\ne1$, mimicking an imperfect network): the ODE lands on the wrong distribution, while the SDE, whose Langevin component keeps pulling particles toward $p_t$, degrades far less. Sliced $W_1$ is shown next to the noise floor between two exact samples.',
     mount(el, ctx) {
       const { controls, stage, stats } = UI.layout(el);
       const ds = UI.select(controls, { label: 'Data distribution', options: Object.keys(MIX).map(k => ({ value: k, label: MIX[k].label })), value: 'blobs', onChange: restart });
       const samp = UI.segmented(controls, { label: 'Sampler', options: [{ value: 'sde', label: 'Reverse SDE' }, { value: 'ode', label: 'Prob.-flow ODE' }], value: 'sde', onChange: restart });
       const nSteps = UI.slider(controls, { label: 'Number of steps $N$', min: 2, max: 1000, value: 100, log: true, fmt: v => String(Math.round(v)), onChange: restart });
+      const cS = UI.slider(controls, { label: 'Score error: use $c\\,\\nabla\\log p_t$ with $c$ =', min: 0.6, max: 1.5, step: 0.05, value: 1, onChange: restart });
       const traj = UI.toggle(controls, { label: 'Show trajectories', value: true, onChange: draw });
       const row = UI.h('div', 'btn-row', controls);
       const loop = ctx.loop(stepFrame);
@@ -964,7 +965,7 @@
       function oneStep(r) {
         const mix = MIX[ds.get()], N = Math.round(nSteps.get()), dt = (1 - TMIN) / N, t = 1 - k * dt, b = betaT(t), sde = samp.get() === 'sde';
         for (let i = 0; i < NP; i++) {
-          const x = X[i], [sx, sy] = scoreAt(mix, x[0], x[1], t);
+          const x = X[i], s0 = scoreAt(mix, x[0], x[1], t), c = cS.get(), sx = c * s0[0], sy = c * s0[1];
           if (sde) { const g = Math.sqrt(b * dt); X[i] = [x[0] + (0.5 * b * x[0] + b * sx) * dt + g * r.normal(), x[1] + (0.5 * b * x[1] + b * sy) * dt + g * r.normal()]; }
           else X[i] = [x[0] + 0.5 * b * (x[0] + sx) * dt, x[1] + 0.5 * b * (x[1] + sy) * dt];
           if (i < NT) paths[i].push(X[i].slice());

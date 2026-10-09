@@ -338,7 +338,7 @@
       const loop = ctx.loop(tick);
       ctx.playButton(row, loop, ['▶ Run', '❚❚ Pause']);
       UI.button(row, 'Next update', () => { loop.stop(); runUntilUpdate(); draw(); });
-      UI.button(row, 'Reset $w$', () => { resetW(); draw(); });
+      UI.button(row, 'Reset w', () => { resetW(); draw(); });
       UI.button(row, 'New data', newData);
       stage.classList.add('two');
       const pD = new Plot(stage, { width: 420, height: 300, x: [-2.5, 2.5], y: [-2.5, 2.5], equal: true, title: 'Data and current separator' });
@@ -699,7 +699,7 @@
       const act = UI.segmented(controls, { label: 'Activation', options: ['sigmoid', 'tanh', 'relu'].map(v => ({ value: v, label: ACTS[v].label })), value: 'tanh', onChange: compute });
       const g = UI.slider(controls, { label: 'Init gain $g$ (Var $= g/n_{\\text{in}}$)', min: 0.25, max: 6, log: true, value: 1, fmt: v => S.fmt(v, 3), onChange: compute });
       const row = UI.h('div', 'btn-row', controls);
-      UI.button(row, 'Critical $g$', () => { g.set(act.get() === 'relu' ? 2 : act.get() === 'tanh' ? 1 : 1); compute(); });
+      UI.button(row, 'Critical g', () => { g.set(act.get() === 'relu' ? 2 : act.get() === 'tanh' ? 1 : 6); compute(); });
       UI.button(row, 'New weights', compute);
       const p = new Plot(stage, { width: 640, height: 310, x: [0, 31], y: [1e-8, 1e4], logy: true, xlabel: 'layer ℓ (1 = closest to input)', ylabel: 'norm', title: 'Gradient size by layer at initialization' });
       const sR = UI.stat(stats, '$\\|\\partial L/\\partial W_1\\| \\,/\\, \\|\\partial L/\\partial W_D\\|$', { accent: 'accent' });
@@ -955,8 +955,8 @@
       const act = UI.segmented(controls, { label: 'Activation', options: ['tanh', 'relu', 'linear'].map(v => ({ value: v, label: ACTS[v].label })), value: 'relu', onChange: compute });
       const g = UI.slider(controls, { label: 'Init gain $g$ (Var $W_{ij} = g/n_{\\text{in}}$)', min: 0.25, max: 8, log: true, value: 1, fmt: v => S.fmt(v, 3), onChange: compute });
       const row = UI.h('div', 'btn-row', controls);
-      UI.button(row, 'LeCun / Glorot ($g=1$)', () => { g.set(1); compute(); }, { small: true });
-      UI.button(row, 'He ($g=2$)', () => { g.set(2); compute(); }, { small: true });
+      UI.button(row, 'LeCun / Glorot (g = 1)', () => { g.set(1); compute(); }, { small: true });
+      UI.button(row, 'He (g = 2)', () => { g.set(2); compute(); }, { small: true });
       const D = UI.slider(controls, { label: 'Depth $D$', min: 2, max: 50, step: 1, value: 30, onChange: compute });
       const norm = UI.segmented(controls, { label: 'Normalization (before $\\phi$)', options: [{ value: 'none', label: 'None' }, { value: 'bn', label: 'BatchNorm' }, { value: 'ln', label: 'LayerNorm' }], value: 'none', onChange: compute });
       const res = UI.toggle(controls, { label: 'Residual: $h_\\ell = h_{\\ell-1} + \\phi(\\cdot)$', value: false, onChange: compute });
@@ -1049,7 +1049,7 @@
       const lam = UI.segmented(controls, { label: 'Ridge $\\lambda$', options: [{ value: '0', label: '0 (min-norm)' }, { value: '1e-4', label: '1e-4' }, { value: '1e-2', label: '1e-2' }, { value: '1e-1', label: '1e-1' }], value: '0', onChange: computeCurve });
       const pS = UI.slider(controls, { label: 'Features $p$ (right panel)', min: 1, max: 400, step: 1, value: 30, onInput: drawFit });
       const row = UI.h('div', 'btn-row', controls);
-      UI.button(row, 'At threshold ($p=n$)', () => { pS.set(+nS.get()); drawFit(); });
+      UI.button(row, 'At threshold (p = n)', () => { pS.set(+nS.get()); drawFit(); });
       UI.button(row, 'New data & features', newData, { primary: true });
       stage.classList.add('two');
       const pC = new Plot(stage, { width: 420, height: 290, x: [1, 400], y: [1e-3, 10], logx: true, logy: true, xlabel: 'number of features p', ylabel: 'MSE', title: 'Risk curve (median over 12 feature draws)' });

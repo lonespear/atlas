@@ -210,7 +210,10 @@
       // fade-out left edge so text stays legible
       const g = ctx.createLinearGradient(0, 0, W * 0.62, 0);
       const bg = css.getPropertyValue('--surface').trim();
-      g.addColorStop(0, bg); g.addColorStop(0.55, bg); g.addColorStop(1, 'transparent');
+      // Fade to the same colour at zero alpha; plain 'transparent' blends through grey.
+      ctx.save(); ctx.fillStyle = bg; const bg0 = ctx.fillStyle; ctx.restore();
+      const clear = bg0[0] === '#' ? `rgba(${parseInt(bg0.slice(1, 3), 16)},${parseInt(bg0.slice(3, 5), 16)},${parseInt(bg0.slice(5, 7), 16)},0)` : 'rgba(255,255,255,0)';
+      g.addColorStop(0, bg); g.addColorStop(0.55, bg); g.addColorStop(1, clear);
       ctx.fillStyle = g; ctx.fillRect(0, 0, W * 0.62, H);
       if (walkers.length > 380) { walkers.splice(0, 1); }
       raf = requestAnimationFrame(frame);

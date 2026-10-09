@@ -389,7 +389,7 @@
     mount(el, ctx) {
       const { controls, stage, stats } = UI.layout(el);
       const pop = UI.select(controls, { label: 'Population $F$', options: ['normal', 'exp', 'lognormal', 'uniform'].map(k => ({ value: k, label: POPS[k].label })), value: 'lognormal', onChange: newSample });
-      const stat = UI.segmented(controls, { label: 'Statistic', options: [{ value: 'mean', label: 'Mean' }, { value: 'variance', label: 'Variance' }, { value: 'median', label: 'Median' }], value: 'variance', onChange: draw });
+      const stat = UI.segmented(controls, { label: 'Statistic', options: [{ value: 'mean', label: 'Mean' }, { value: 'variance', label: 'Variance' }, { value: 'median', label: 'Median' }], value: 'mean', onChange: draw });
       const n = UI.slider(controls, { label: 'Sample size $n$', min: 8, max: 150, step: 1, value: 25, onChange: newSample });
       const conf = UI.segmented(controls, { label: 'Confidence', options: ['90%', '95%'], value: '95%', onChange: draw });
       UI.button(controls, 'New sample', newSample, { primary: true });
@@ -1052,7 +1052,7 @@
         sM.set(String(m), `m/n = ${S.fmt(m / nn, 3)}`);
         sA.set(`${(100 * aB).toFixed(1)}% / ${(100 * atom(dM)).toFixed(1)}% / ${m < nn ? (100 * atom(dS)).toFixed(1) + '%' : '—'}`, `theory m-of-n: ${(100 * (1 - (1 - 1 / nn) ** m)).toFixed(1)}%, subsample: ${(100 * m / nn).toFixed(1)}%`);
         sK.set(`${S.fmt(ksExp(dB), 3)} / ${S.fmt(ksExp(dM), 3)} / ${m < nn ? S.fmt(ksExp(dS), 3) : '—'}`);
-        sT.set(S.fmt(Math.min(1, m * (m - 1) / (2 * nn)), 3), 'm-of-n vs subsampling');
+        sT.set(S.fmt(Math.min(1, m * (m - 1) / (2 * nn)), 3), m * (m - 1) >= 2 * nn ? 'bound vacuous: m² is not small relative to n' : 'm-of-n vs subsampling');
       }
       newSample();
     },
@@ -1170,8 +1170,8 @@
         },
       };
       const stat = UI.segmented(controls, { label: 'Statistic (two-sided, $|T|$)', options: Object.keys(TS).map(k => ({ value: k, label: TS[k].label })), value: 'mean', onChange: restart });
-      const m = UI.slider(controls, { label: 'Group sizes $m = n$', min: 3, max: 40, step: 1, value: 10, onChange: newData });
-      const delta = UI.slider(controls, { label: 'Shift $\\delta$', min: 0, max: 2, step: 0.05, value: 0.6, onChange: newData });
+      const m = UI.slider(controls, { label: 'Group sizes $m = n$', min: 3, max: 40, step: 1, value: 12, onChange: newData });
+      const delta = UI.slider(controls, { label: 'Shift $\\delta$', min: 0, max: 2, step: 0.05, value: 1.2, onChange: newData });
       const row = UI.h('div', 'btn-row', controls);
       const loop = ctx.loop(step);
       ctx.playButton(row, loop, ['▶ Permute', '❚❚ Pause']);

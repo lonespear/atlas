@@ -1168,4 +1168,295 @@
       newData();
     },
   });
+
+  /* ------------------------------------------------------------------ */
+  /* rank-tests                                                           */
+  /* ------------------------------------------------------------------ */
+  // Exact null pmf of the Mann–Whitney U = #{(i,j): X_i < Y_j}, m X's and n Y's.
+  const mwCache = {};
+  function mwPmf(m, n) {
+    const key = m + ',' + n;
+    if (mwCache[key]) return mwCache[key];
+    // c[i][j] = counts array over u for i X's and j Y's
+    const c = S.range(m + 1).map(() => new Array(n + 1));
+    for (let i = 0; i <= m; i++) for (let j = 0; j <= n; j++) {
+      if (i === 0 || j === 0) { c[i][j] = [1]; continue; }
+      const a = c[i][j - 1], b = c[i - 1][j], out = new Array(i * j + 1).fill(0);
+      for (let u = 0; u < a.length; u++) out[u + i] += a[u]; // largest is a Y: it beats all i X's
+      for (let u = 0; u < b.length; u++) out[u] += b[u];     // largest is an X
+      c[i][j] = out;
+    }
+    const cnt = c[m][n], tot = S.sum(cnt);
+    return (mwCache[key] = cnt.map(v => v / tot));
+  }
+  function midranks(z) {
+    const idx = S.range(z.length).sort((a, b) => z[a] - z[b]), r = new Array(z.length);
+    for (let i = 0; i < idx.length;) {
+      let j = i; while (j + 1 < idx.length && z[idx[j + 1]] === z[idx[i]]) j++;
+      const avg = (i + j) / 2 + 1;
+      for (let k = i; k <= j; k++) r[idx[k]] = avg;
+      i = j + 1;
+    }
+    return r;
+  }
+  // U for samples x (m) and y (n) via midranks: U = W_y - n(n+1)/2 (ties count 1/2).
+  function mannWhitneyU(x, y) {
+    const r = midranks(x.concat(y)), m = x.length, n = y.length;
+    let w = 0; for (let j = 0; j < n; j++) w += r[m + j];
+    return w - n * (n + 1) / 2;
+  }
+  const RPOPS = {
+    normal: { label: 'Normal', sample: r => r.normal(), pdf: phi, v: 1 },
+    logistic: { label: 'Logistic', sample: r => r.logistic(), pdf: x => S.pdf.logistic(x), v: Math.PI ** 2 / 3 },
+    laplace: { label: 'Laplace', sample: r => r.laplace(), pdf: x => S.pdf.laplace(x), v: 2 },
+    t3: { label: 't₃', sample: r => r.t(3), pdf: x => S.pdf.t(x, 3), v: 3 },
+    cauchy: { label: 'Cauchy', sample: r => r.cauchy(), pdf: x => S.pdf.cauchy(x), v: Infinity },
+    uniform: { label: 'Uniform', sample: r => r.uniform(-0.5, 0.5), pdf: x => (Math.abs(x) <= 0.5 ? 1 : 0), v: 1 / 12, f2: 1 },
+    contam: { label: '10% contaminated normal', sample: r => (r.u() < 0.1 ? r.normal(0, 3) : r.normal()), pdf: x => 0.9 * phi(x) + 0.1 * phi(x / 3) / 3, v: 1.8 },
+    parabolic: { label: 'Parabolic (worst case)', sample: r => { const u1 = r.uniform(-1, 1), u2 = r.uniform(-1, 1), u3 = r.uniform(-1, 1); const e = Math.abs(u3) >= Math.abs(u2) && Math.abs(u3) >= Math.abs(u1) ? u2 : u3; return Math.sqrt(5) * e; }, pdf: x => (Math.abs(x) <= Math.sqrt(5) ? 3 * (5 - x * x) / (20 * Math.sqrt(5)) : 0), v: 1, f2: 3 / (5 * Math.sqrt(5)) },
+    poisson: { label: 'Poisson(2) — ties', sample: r => r.poisson(2), pdf: null, v: 2 },
+  };
+  const areCache = {};
+  function areWT(key) {
+    if (areCache[key] != null) return areCache[key];
+    const P = RPOPS[key];
+    if (!Number.isFinite(P.v)) return (areCache[key] = Infinity);
+    const g = 40000, a = -60, b = 60, xs = S.linspace(a, b, g + 1);
+    const f2 = P.f2 != null ? P.f2 : trapz(xs.map(x => P.pdf(x) ** 2), (b - a) / g);
+    return (areCache[key] = 12 * P.v * f2 * f2);
+  }
+  const scaleCache = {};
+  function popScale(key) {
+    if (scaleCache[key]) return scaleCache[key];
+    const r = S.rng(11), v = sortA(r.array(20000, () => RPOPS[key].sample(r)));
+    return (scaleCache[key] = (S.quantile(v, 0.75, true) - S.quantile(v, 0.25, true)) / 1.349 || 1);
+  }
+
+  Atlas.lab('rank-tests-null', {
+    title: 'The exact null distribution of Mann–Whitney U is the same for every F',
+    blurb: R`Stems: the exact null distribution of $U$ for these sample sizes, computed by the recursion $c_{m,n}(u) = c_{m,n-1}(u-m) + c_{m-1,n}(u)$. Curve: the normal approximation. Bars: $U$ simulated from two samples of the chosen population. Every continuous population gives the same bars; the discrete Poisson, with ties, does not — its rejection rate drifts from the exact size.`,
+    mount(el, ctx) {
+      const { controls, stage, stats } = UI.layout(el);
+      const pop = UI.select(controls, { label: 'Population (both samples)', options: ['normal', 'cauchy', 'uniform', 'laplace', 'poisson'].map(k => ({ value: k, label: RPOPS[k].label })), value: 'cauchy', onChange: reset });
+      const mS = UI.slider(controls, { label: 'Size $m$ of sample X', min: 2, max: 25, step: 1, value: 6, onChange: reset });
+      const nS = UI.slider(controls, { label: 'Size $n$ of sample Y', min: 2, max: 25, step: 1, value: 8, onChange: reset });
+      const row = UI.h('div', 'btn-row', controls);
+      const loop = ctx.loop(step);
+      ctx.playButton(row, loop, ['▶ Simulate under H₀', '❚❚ Pause']);
+      UI.button(row, 'Clear', reset);
+      const p = new Plot(stage, { width: 640, height: 300, xlabel: 'U = #{(i, j): Xᵢ < Yⱼ}', ylabel: 'probability' });
+      const sM = UI.stat(stats, '$\\E U = mn/2$');
+      const sV = UI.stat(stats, '$\\sd(U)=\\sqrt{mn(N+1)/12}$');
+      const sC = UI.stat(stats, 'Exact two-sided test', { accent: 'accent' });
+      const sR = UI.stat(stats, 'Simulated rejection rate');
+      let sims = [];
+      function crit(pm) { let c = 0, cl = -1; for (let u = 0; u < pm.length; u++) { c += pm[u]; if (c <= 0.025) cl = u; else break; } return cl; }
+      function reset() { sims = []; loop.stop(); draw(); }
+      function step() {
+        const P = RPOPS[pop.get()], m = Math.round(mS.get()), n = Math.round(nS.get());
+        for (let k = 0; k < 300 && sims.length < 20000; k++) sims.push(mannWhitneyU(ctx.rng.array(m, () => P.sample(ctx.rng)), ctx.rng.array(n, () => P.sample(ctx.rng))));
+        draw();
+        if (sims.length >= 20000) return false;
+      }
+      function draw() {
+        const m = Math.round(mS.get()), n = Math.round(nS.get()), N = m + n, pm = mwPmf(m, n), mn = m * n;
+        const mu = mn / 2, sd = Math.sqrt(mn * (N + 1) / 12);
+        const ymax = Math.max(...pm) * 1.3;
+        p.setDomain([-0.5, mn + 0.5], [0, ymax]).clear();
+        const cl = crit(pm), cu = mn - cl;
+        if (cl >= 0) { p.band(-0.5, cl + 0.5, { color: 'bad', opacity: 0.08 }); p.band(cu - 0.5, mn + 0.5, { color: 'bad', opacity: 0.08 }); }
+        if (sims.length) {
+          const cnt = new Array(mn + 1).fill(0);
+          for (const u of sims) { const lo = Math.floor(u), w = u - lo; cnt[lo] += 1 - w; if (w > 0) cnt[lo + 1] += w; }
+          p.bars(cnt.map((c, u) => ({ x0: u - 0.4, x1: u + 0.4, y: c / sims.length })), { color: 's2', opacity: 0.4, gap: 0 });
+        }
+        p.stems(pm.map((q, u) => [u, q]), { color: 's1', r: mn > 200 ? 1.5 : 2.5, width: mn > 200 ? 1 : 1.6 });
+        p.line(S.linspace(-0.5, mn + 0.5, 300).map(u => [u, phi((u - mu) / sd) / sd]), { color: 'ink', width: 1.5, dash: true });
+        p.legend([{ label: 'exact null pmf', color: 's1' }, { label: 'normal approximation', color: 'ink', dash: true }, { label: 'simulated', color: 's2', fill: true }]);
+        const size = cl >= 0 ? 2 * S.sum(pm.slice(0, cl + 1)) : 0;
+        sM.set(S.fmt(mu, 1)); sV.set(S.fmt(sd));
+        sC.set(cl >= 0 ? `reject U ≤ ${cl} or U ≥ ${cu}` : 'no rejection region', `exact size ${(100 * size).toFixed(2)}% (nominal 5%)`);
+        if (sims.length) { const rej = sims.filter(u => u <= cl || u >= cu).length; sR.set((100 * rej / sims.length).toFixed(2) + '%', `${sims.length} simulations`); }
+        else sR.set('—', 'press Simulate');
+      }
+      draw();
+    },
+  });
+
+  Atlas.lab('rank-tests-power', {
+    title: 'Wilcoxon vs t: power under different tails',
+    blurb: R`Two samples of size $n$ from the chosen distribution, the second shifted by $\Delta = c\cdot\text{scale}/\sqrt n$. Each curve is Monte Carlo power at level 5% for the pooled $t$-test and the Wilcoxon rank-sum test. Under the normal the $t$-test is slightly ahead (ARE $3/\pi$); the parabolic law is the Hodges–Lehmann worst case (0.864); with heavy tails or contamination Wilcoxon wins by a wide margin.`,
+    mount(el, ctx) {
+      const { controls, stage, stats } = UI.layout(el);
+      const pop = UI.select(controls, { label: 'Distribution', options: ['normal', 'parabolic', 'uniform', 'logistic', 'laplace', 't3', 'contam', 'cauchy'].map(k => ({ value: k, label: RPOPS[k].label })), value: 'normal', onChange: reset });
+      const nS = UI.slider(controls, { label: 'Per-group size $n$', min: 5, max: 60, step: 1, value: 20, onChange: reset });
+      const row = UI.h('div', 'btn-row', controls);
+      const loop = ctx.loop(step);
+      ctx.playButton(row, loop, ['▶ Simulate', '❚❚ Pause']);
+      UI.button(row, 'Clear', reset);
+      const p = new Plot(stage, { width: 640, height: 300, x: [0, 5], y: [0, 1], xlabel: 'shift c = Δ·√n / scale', ylabel: 'power' });
+      const sA = UI.stat(stats, 'Pitman ARE $12\\sigma^2(\\int f^2)^2$', { accent: 'accent' });
+      const sP = UI.stat(stats, 'Power at $c=2.5$: t / Wilcoxon');
+      const sZ = UI.stat(stats, 'Size at $c=0$: t / Wilcoxon');
+      const sN = UI.stat(stats, 'Replications per point');
+      const CS = S.linspace(0, 5, 11);
+      let ht, hw, reps;
+      function reset() { ht = CS.map(() => 0); hw = CS.map(() => 0); reps = 0; loop.stop(); draw(); }
+      function step() {
+        const P = RPOPS[pop.get()], n = Math.round(nS.get()), sc = popScale(pop.get()), tc = S.q.t(0.975, 2 * n - 2);
+        const sdU = Math.sqrt(n * n * (2 * n + 1) / 12);
+        const per = Math.max(1, Math.round(600 / n));
+        for (let r = 0; r < per && reps < 3000; r++) {
+          CS.forEach((c, k) => {
+            const d = c * sc / Math.sqrt(n);
+            const x = ctx.rng.array(n, () => P.sample(ctx.rng)), y = ctx.rng.array(n, () => P.sample(ctx.rng) + d);
+            const mx = S.mean(x), my = S.mean(y), sp = Math.sqrt((S.variance(x) + S.variance(y)) / 2);
+            if (Math.abs((my - mx) / (sp * Math.sqrt(2 / n))) > tc) ht[k]++;
+            if (Math.abs((mannWhitneyU(x, y) - n * n / 2) / sdU) > 1.96) hw[k]++;
+          });
+          reps++;
+        }
+        draw();
+        if (reps >= 3000) return false;
+      }
+      function draw() {
+        p.clear();
+        p.hline(0.05, { color: 'muted' });
+        if (reps) {
+          const pt = CS.map((c, k) => [c, ht[k] / reps]), pw = CS.map((c, k) => [c, hw[k] / reps]);
+          p.line(pt, { color: 's1', width: 2.2 }); p.points(pt, { color: 's1', r: 3.5 });
+          p.line(pw, { color: 's2', width: 2.2 }); p.points(pw, { color: 's2', r: 3.5 });
+        }
+        p.legend([{ label: 't-test', color: 's1' }, { label: 'Wilcoxon rank-sum', color: 's2' }], { left: true });
+        const are = areWT(pop.get());
+        sA.set(Number.isFinite(are) ? S.fmt(are) : '∞', Number.isFinite(are) ? (are > 1 ? 'Wilcoxon more efficient' : 't more efficient') : 't-test not even valid');
+        sP.set(reps ? `${(100 * ht[5] / reps).toFixed(1)}% / ${(100 * hw[5] / reps).toFixed(1)}%` : '—');
+        sZ.set(reps ? `${(100 * ht[0] / reps).toFixed(1)}% / ${(100 * hw[0] / reps).toFixed(1)}%` : '—', 'nominal 5%');
+        sN.set(String(reps));
+      }
+      reset();
+    },
+  });
+
+  /* ------------------------------------------------------------------ */
+  /* robust-statistics                                                    */
+  /* ------------------------------------------------------------------ */
+  const ESTS = [
+    { key: 'mean', label: 'Mean', f: S.mean, color: 's1' },
+    { key: 'median', label: 'Median', f: S.median, color: 's2' },
+    { key: 'trim10', label: '10% trimmed', f: a => trimmedMean(a, 0.1), color: 's3' },
+    { key: 'trim25', label: '25% trimmed', f: a => trimmedMean(a, 0.25), color: 's7' },
+    { key: 'huber', label: 'Huber k=1.345', f: a => mEstimate(a, 'huber', 1.345), color: 's4' },
+    { key: 'biw', label: 'Biweight c=4.685', f: a => mEstimate(a, 'biweight', 4.685), color: 's5' },
+    { key: 'hl', label: 'Hodges–Lehmann', f: hodgesLehmann, color: 's6' },
+  ];
+  Atlas.lab('robust-statistics-contamination', {
+    title: 'Mean, median, trimmed, Huber, biweight under contamination',
+    blurb: R`Data are $\N(0,1)$ except that each point, with probability $\epsilon$, comes instead from $\N(\pm x_{\text{out}}, 0.5^2)$. The target is $\theta = 0$. Bars show Monte Carlo $n\cdot\MSE$ (so $1$ is the mean's value at the clean normal). At $\epsilon = 0$ you see the efficiency cost of robustness; raise $\epsilon$ and the mean collapses. With one-sided contamination every estimator is biased, but the robust ones far less.`,
+    mount(el, ctx) {
+      const { controls, stage, stats } = UI.layout(el);
+      const eps = UI.slider(controls, { label: 'Contamination $\\epsilon$', min: 0, max: 0.3, step: 0.01, value: 0.05, onChange: reset });
+      const loc = UI.slider(controls, { label: 'Outlier location $x_{\\text{out}}$', min: 0, max: 20, step: 0.5, value: 8, onChange: reset });
+      const side = UI.segmented(controls, { label: 'Contamination', options: [{ value: 'sym', label: 'Symmetric ±' }, { value: 'one', label: 'One-sided +' }], value: 'sym', onChange: reset });
+      const nS = UI.slider(controls, { label: 'Sample size $n$', min: 10, max: 200, step: 1, value: 40, onChange: reset });
+      const row = UI.h('div', 'btn-row', controls);
+      const loop = ctx.loop(step);
+      ctx.playButton(row, loop, ['▶ Simulate', '❚❚ Pause']);
+      UI.button(row, 'New example sample', () => { example(); draw(); });
+      stage.classList.add('two');
+      const pL = new Plot(stage, { width: 420, height: 270, x: [-4, 4], y: [0, 1], yticks: 0, xlabel: 'x', title: 'One sample and the estimates' });
+      const pR = new Plot(stage, { width: 420, height: 270, x: [0, ESTS.length], y: [0, 2], xticks: 0, ylabel: 'n · MSE', title: 'Monte Carlo n·MSE (lower is better)' });
+      const sN = UI.stat(stats, 'Replications');
+      const sB = UI.stat(stats, 'Best estimator here', { accent: 'accent' });
+      const sMb = UI.stat(stats, 'Bias of the mean');
+      let xs = [], sum, sum2, reps;
+      function draw1(r) {
+        const e = eps.get(), L = loc.get(), sym = side.get() === 'sym';
+        return r.array(Math.round(nS.get()), () => (r.u() < e ? (sym && r.u() < 0.5 ? -1 : 1) * L + 0.5 * r.normal() : r.normal()));
+      }
+      function example() { xs = draw1(ctx.rng); }
+      function reset() { sum = ESTS.map(() => 0); sum2 = ESTS.map(() => 0); reps = 0; loop.stop(); example(); draw(); }
+      function step() {
+        const n = Math.round(nS.get()), per = Math.max(2, Math.round(1500 / n));
+        for (let r = 0; r < per && reps < 4000; r++) {
+          const a = draw1(ctx.rng);
+          ESTS.forEach((E, k) => { const t = E.f(a); sum[k] += t; sum2[k] += t * t; });
+          reps++;
+        }
+        draw();
+        if (reps >= 4000) return false;
+      }
+      function draw() {
+        const L = Math.max(4, loc.get() + 1.5);
+        pL.setDomain([-L, L], [0, 1]).clear();
+        xs.forEach((x, i) => pL.dot(x, 0.08 + 0.18 * ((i * 0.618) % 1), { color: 'muted', r: 3, opacity: 0.6, strokeWidth: 0 }));
+        ESTS.forEach((E, k) => { const t = E.f(xs); pL.segment(t, 0.35, t, 0.97, { color: E.color, width: 2 }); pL.text(t, 0.4 + 0.08 * k, E.label, { size: 10, color: E.color, dx: 3 }); });
+        const n = Math.round(nS.get());
+        const mse = ESTS.map((E, k) => (reps ? n * sum2[k] / reps : NaN));
+        const top = reps ? Math.min(Math.max(2, ...mse.filter(Number.isFinite)) * 1.15, 30) : 2;
+        pR.setDomain([0, ESTS.length], [0, top]).clear();
+        pR.hline(1, { color: 'muted' });
+        ESTS.forEach((E, k) => {
+          if (reps) {
+            pR.bars([{ x0: k + 0.12, x1: k + 0.88, y: Math.min(mse[k], top) }], { color: E.color, opacity: 0.75 });
+            pR.text(k + 0.5, Math.min(mse[k], top), mse[k] > top ? '≫' : S.fmt(mse[k], 2), { anchor: 'middle', dy: -5, size: 11, weight: 600 });
+          }
+          pR.text(k + 0.5, 0, E.label.split(' ')[0], { anchor: 'middle', dy: 14, size: 10, color: 'muted' });
+        });
+        sN.set(String(reps));
+        if (reps) { const b = S.argmin(mse); sB.set(ESTS[b].label, `n·MSE = ${S.fmt(mse[b], 2)}`); sMb.set(S.fmt(sum[0] / reps), 'true θ = 0'); }
+        else { sB.set('—', 'press Simulate'); sMb.set('—'); }
+      }
+      reset();
+    },
+  });
+
+  Atlas.lab('robust-statistics-breakdown', {
+    title: 'Breakdown: corrupt points one at a time',
+    blurb: R`Twenty standard-normal observations; the slider replaces the $m$ largest of them with a single wild value. Left: the data and each estimate. Right: every estimator's value as $m$ goes from 0 to 19 (on a signed-log scale), so the breakdown point is where its curve shoots up: the mean at $m=1$, the 10% trimmed mean at $m=3$, the 25% trimmed mean at $m=6$, Hodges–Lehmann near $m=6$ (asymptotic breakdown 0.29), and the median, Huber and biweight (with MAD scale) only at $m=10$. Huber bends before it breaks: its bias grows with $m$ but stays bounded. Switch the right panel to see the $\psi$ functions behind the M-estimators.`,
+    mount(el, ctx) {
+      const { controls, stage, stats } = UI.layout(el);
+      const mS = UI.slider(controls, { label: 'Corrupted points $m$ (of 20)', min: 0, max: 19, step: 1, value: 2, onInput: draw });
+      const vS = UI.slider(controls, { label: 'Wild value', min: 5, max: 10000, value: 100, log: true, fmt: v => String(Math.round(v)), onInput: draw });
+      const mode = UI.segmented(controls, { label: 'Right panel', options: [{ value: 'path', label: 'Estimate vs m' }, { value: 'psi', label: 'ψ functions' }], value: 'path', onChange: draw });
+      UI.button(controls, 'New sample', () => { base = sortA(ctx.rng.array(20, () => ctx.rng.normal())); draw(); }, { primary: true });
+      stage.classList.add('two');
+      const pL = new Plot(stage, { width: 420, height: 270, x: [-4, 4], y: [0, 1], yticks: 0, xlabel: 'x', title: 'Data (corrupted points off the scale)' });
+      const pR = new Plot(stage, { width: 420, height: 270, x: [0, 19], xlabel: 'm', ylabel: 'sgn(T)·log₁₀(1+|T|)', title: 'Estimates as m grows' });
+      const tiles = ESTS.map(E => UI.stat(stats, E.label));
+      let base = sortA(ctx.rng.array(20, () => ctx.rng.normal()));
+      const corrupt = (m, v) => base.slice(0, 20 - m).concat(S.range(m).map(j => v * (1 + 0.001 * j)));
+      const slog = t => Math.sign(t) * Math.log10(1 + Math.abs(t));
+      function draw() {
+        const m = Math.round(mS.get()), v = vS.get(), a = corrupt(m, v);
+        pL.clear();
+        a.filter(x => x <= 4).forEach((x, i) => pL.dot(x, 0.1 + 0.15 * ((i * 0.618) % 1), { color: 'muted', r: 3.2, opacity: 0.7, strokeWidth: 0 }));
+        if (m) { pL.arrow(3.2, 0.2, 3.9, 0.2, { color: 'bad' }); pL.text(3.9, 0.3, `${m} at ${Math.round(v)}`, { anchor: 'end', color: 'bad', size: 11 }); }
+        ESTS.forEach((E, k) => {
+          const t = E.f(a), y = 0.42 + 0.075 * k;
+          if (t > 4) { pL.arrow(3.4, y, 3.95, y, { color: E.color, width: 2 }); pL.text(3.35, y, `${E.label} = ${S.fmt(t, 1)}`, { anchor: 'end', size: 10, color: E.color, dy: 3 }); }
+          else { pL.segment(t, y - 0.03, t, y + 0.03, { color: E.color, width: 3 }); pL.text(t, y, E.label, { size: 10, color: E.color, dx: 4, dy: 3 }); }
+          tiles[k].set(S.fmt(t, 2));
+        });
+        if (mode.get() === 'path') {
+          pR.o.title = 'Estimates as m grows'; pR.o.xlabel = 'm'; pR.o.ylabel = 'sgn(T)·log₁₀(1+|T|)';
+          pR.setDomain([0, 19], [-0.5, Math.log10(1 + v) * 1.08]).clear();
+          pR.vline(m, { color: 'muted' });
+          ESTS.forEach(E => pR.line(S.range(20).map(k => [k, slog(E.f(corrupt(k, v)))]), { color: E.color, width: 2 }));
+          pR.legend(ESTS.map(E => ({ label: E.label, color: E.color })), { left: true });
+        } else {
+          pR.o.title = 'ψ functions (u in scale units)'; pR.o.xlabel = 'u'; pR.o.ylabel = 'ψ(u)';
+          pR.setDomain([-8, 8], [-3, 3]).clear();
+          const g = S.linspace(-8, 8, 400);
+          pR.hline(0, { color: 'faint', dash: false, width: 1 });
+          pR.line(g.map(u => [u, u]), { color: 's1', width: 2 });
+          pR.line(g.map(u => [u, u === 0 ? 0 : Math.sign(u)]), { color: 's2', width: 2 });
+          pR.line(g.map(u => [u, S.clamp(u, -1.345, 1.345)]), { color: 's4', width: 2 });
+          pR.line(g.map(u => [u, Math.abs(u) < 4.685 ? u * (1 - (u / 4.685) ** 2) ** 2 : 0]), { color: 's5', width: 2 });
+          pR.legend([{ label: 'mean: u', color: 's1' }, { label: 'median: sgn u', color: 's2' }, { label: 'Huber', color: 's4' }, { label: 'biweight (redescending)', color: 's5' }], { left: true });
+        }
+      }
+      draw();
+    },
+  });
 })();

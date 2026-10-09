@@ -656,7 +656,7 @@
   /* ================= deviance ================= */
   Atlas.lab('deviance-gof', {
     title: 'When is the deviance $\\chi^2_{n-p}$?',
-    blurb: 'Simulate a correctly specified logistic model with $m$ trials per observation, fit it, and record the deviance $D$ and Pearson $X^2$. With $m$ large both follow $\\chi^2_{n-p}$ (curve). Shrink $m$ to 1 and the deviance distribution collapses into a narrow spike far from the reference: it no longer measures fit.',
+    blurb: 'Simulate a correctly specified logistic model with $m$ trials per observation, fit it, and record the deviance $D$ and Pearson $X^2$. With $m$ large both follow $\\chi^2_{n-p}$ (curve). Shrink $m$ to 1 and the deviance distribution collapses into a narrow spike set by the fitted probabilities: it no longer measures fit. At intermediate $m$, note that $X^2$ is better calibrated than $D$.',
     mount(el, ctx) {
       const { controls, stage, stats } = UI.layout(el);
       const m = UI.segmented(controls, { label: 'Trials per observation $m$', options: ['1', '2', '5', '10', '30'], value: '30', onChange: reset });
@@ -826,7 +826,7 @@
 
   Atlas.lab('glm-inference-coverage', {
     title: 'Coverage of Wald and profile-likelihood intervals',
-    blurb: 'Repeated logistic regressions with intercept $-1$ and the chosen slope. Each experiment builds a nominal 95% Wald interval and a profile-likelihood interval for $\\beta_1$. With few events the Wald interval undercovers; the profile interval stays closer to 95%. Separated data sets (Wald undefined) are counted separately.',
+    blurb: 'Repeated logistic regressions with intercept $-1$ and the chosen slope. Each experiment builds a nominal 95% Wald interval and a profile-likelihood interval for $\\beta_1$. With few events the Wald coverage drifts far from 95% (usually above it, because its SE inflates with $|\\hat\\beta_1|$), while the profile interval stays within a point or two. Try $n = 15$ with $\\beta_1 = 0$, then $n = 150$. Separated data sets (MLE undefined) are counted separately.',
     mount(el, ctx) {
       const { controls, stage, stats } = UI.layout(el);
       const n = UI.slider(controls, { label: 'Sample size $n$', min: 10, max: 150, step: 5, value: 25, onChange: reset });
@@ -1159,7 +1159,7 @@
 
   Atlas.lab('glmm-gee-sandwich', {
     title: 'Clustered counts: naive, independence-GEE and exchangeable-GEE inference',
-    blurb: 'Poisson counts in $K$ clusters of size $m$ with a lognormal random intercept (SD $\\sigma_b$), scaled so the marginal mean is $\\exp(0.5 + 0.5x)$ and the marginal slope is exactly 0.5. Compare coverage of the naive GLM interval with cluster-robust sandwich intervals, and the efficiency of exchangeable over independence working correlation.',
+    blurb: 'Poisson counts in $K$ clusters of size $m$ with a lognormal random intercept (SD $\\sigma_b$), scaled so the marginal mean is $\\exp(0.5 + 0.5x)$ and the marginal slope is exactly 0.5. Compare coverage of the naive GLM interval with cluster-robust sandwich intervals, and the efficiency of exchangeable over independence working correlation. Even with 100 clusters the uncorrected sandwich undercovers slightly.',
     mount(el, ctx) {
       const { controls, stage, stats } = UI.layout(el);
       const K = UI.slider(controls, { label: 'Clusters $K$', min: 10, max: 100, step: 5, value: 30, onChange: reset });

@@ -193,9 +193,11 @@
           const s = xs.slice().sort((a, b) => a - b), n = s.length, pts = [[lo, 0]];
           let D_ = 0;
           for (let i = 0; i < n; i++) {
-            pts.push([s[i], (i + 1) / n]);
+            let j = i; while (j + 1 < n && s[j + 1] === s[i]) j++;   // tie group (atoms)
+            pts.push([s[i], (j + 1) / n]);
             const F = D.F(s[i]), Fm = D.F(s[i] - 1e-9);
-            D_ = Math.max(D_, Math.abs((i + 1) / n - F), Math.abs(i / n - Fm));
+            D_ = Math.max(D_, Math.abs((j + 1) / n - F), Math.abs(i / n - Fm));
+            i = j;
           }
           pts.push([hi, 1]);
           pR.step(pts, { color: 's1', width: 1.6 });
@@ -311,7 +313,11 @@
         const rat = x => { const gx = gfun(x); return gx > 0 ? T.f(x) / gx : 0; };
         const growing = !T.bounded && (rat(12) > 1.01 * rat(10) || rat(-12) > 1.01 * rat(-10));
         Mstar = uncovered || growing ? Infinity : mx;
-        M = mr.get() * Math.max(mx, 1e-9);
+        let mxPlot = 0;
+        // With no finite envelope, cover only the bulk (where f is at least 10% of its peak).
+        const fpk = Math.max(...S.linspace(T.range[0], T.range[1], 801).map(T.f));
+        for (const x of S.linspace(T.range[0], T.range[1], 801)) if (T.f(x) >= 0.1 * fpk) mxPlot = Math.max(mxPlot, rat(x));
+        M = mr.get() * Math.max(Number.isFinite(Mstar) ? mx : mxPlot, 1e-9);
       }
       function reset() { darts = []; acc = []; tries = 0; setup(); draw(); }
       function throwN(k) {
@@ -347,7 +353,7 @@
         pR.line(xs.map((x, i) => [x, fv[i]]), { color: 'ink', width: 2 });
         if (M < Mstar) pR.line(xs.map((x, i) => [x, clip[i] / zc]), { color: 'bad', width: 2, dash: true });
         pR.legend(M < Mstar ? [{ label: 'f', color: 'ink' }, { label: 'min(f, Mg) normalized', color: 'bad', dash: true }] : [{ label: 'f', color: 'ink' }, { label: 'accepted', color: 's1', fill: true }]);
-        sM.set(Number.isFinite(Mstar) ? fmt(Mstar, 3) : '∞', Number.isFinite(Mstar) ? `using M = ${fmt(M, 3)}` : 'f/g unbounded: proposal tails too light');
+        sM.set(Number.isFinite(Mstar) ? fmt(Mstar, 3) : '∞', Number.isFinite(Mstar) ? `using M = ${fmt(M, 3)}` : 'f/g unbounded: M covers only the bulk, tails get clipped');
         sAcc.set(tries ? pct(acc.length / tries) : '—', `1/M = ${pct(1 / M)}`);
         sN.set(`${acc.length} / ${tries}`);
         sW.set(M >= Mstar ? '<span style="color:var(--good)">yes: f ≤ Mg</span>' : '<span style="color:var(--bad)">no: output is biased</span>');
@@ -690,15 +696,17 @@
         p.points(mid.map(q => [q[0], Math.max(ylo, q[1])]), { color: 's1', r: 3 });
         p.legend([{ label: 'midpoint rule (m^d points)', color: 's1' }, { label: 'MC RMSE σ/√N', color: 's2' }, { label: 'MC realized |error|', color: 's2', fill: true }]);
         // crossover: midpoint error ~ C N^{-2/d}; MC ~ sigma N^{-1/2}
-        let cross = null;
-        for (const [n, e] of mid) if (n > 1 && e > Math.sqrt(sig2 / n)) cross = n;
-        const last = mid[mid.length - 1];
+        const cmp = mid.filter(q => q[0] > 1).map(([n, e]) => [n, e < Math.sqrt(sig2 / n)]);
         sMid.set(fmt(-2 / d, 3), 'theory −2/d');
         sMC.set('−0.5', 'any d');
         sSig.set(fmt(sig2, 3), d > 1 ? `grows like (π²/8)^d = ${fmt((Math.PI ** 2 / 8) ** d, 3)}` : '');
-        if (cross === null) sX.set('none', 'midpoint wins over the whole range');
-        else if (cross === last[0]) sX.set('> ' + Math.round(last[0]).toLocaleString(), 'MC better at every budget shown');
-        else sX.set('≈ ' + Math.round(cross).toLocaleString(), 'midpoint wins only beyond this N');
+        if (!cmp.length || cmp.every(c => c[1])) sX.set('none', 'midpoint rule better at every N shown');
+        else if (cmp.every(c => !c[1])) sX.set('none', 'Monte Carlo better at every N shown');
+        else {
+          const endMid = cmp[cmp.length - 1][1];
+          let j = cmp.length - 1; while (j > 0 && cmp[j - 1][1] === endMid) j--;
+          sX.set('≈ ' + Math.round(cmp[j][0]).toLocaleString(), endMid ? 'midpoint rule better beyond this N' : 'Monte Carlo better beyond this N');
+        }
       }
       run();
     },
@@ -771,7 +779,7 @@
         sP.set(p.toExponential(3));
         const crude = Math.sqrt((1 - p) / (n * p));
         sR.set(`${Number.isFinite(relTh) ? fmt(relTh, 3) : '∞'} vs ${fmt(crude, 3)}`, Number.isFinite(relTh) && relTh > 0 ? `efficiency gain ≈ ${fmt((crude / relTh) ** 2, 3)}×` : '');
-        sESS.set(`${contrib.length} / ${fmt(ess, 4)}`, 'all draws with equal h·w would give ESS = hits');
+        sESS.set(`${contrib.length} / ${Math.round(ess)}`, 'all draws with equal h·w would give ESS = hits');
       }
       run();
     },
@@ -1284,7 +1292,8 @@
         const cv = curves[m];
         sM.set(pct(S.mean(mcses), 2), `R = ${R}`);
         sMiss.set(`${miss} / 15`, 'expected ≈ 0.7 by chance');
-        sMin.set(pct(Math.min(...cv)), `at p = ${fmt(grid[S.argmin(cv)], 3)}`);
+        const inner = grid.map((q, i) => [q, cv[i]]).filter(([q]) => q >= 0.05 && q <= 0.95), wi = S.argmin(inner.map(v => v[1]));
+        sMin.set(pct(inner[wi][1]), `at p = ${fmt(inner[wi][0], 3)} (over 0.05 ≤ p ≤ 0.95)`);
         sAvg.set(pct(S.mean(cv)));
       }
       run();

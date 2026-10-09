@@ -223,7 +223,7 @@ $$\operatorname{logit}\pi_i = \log\frac{\pi_i}{1-\pi_i} = \bx_i^\top\bbeta,\qqua
 In the <a href="#/t/glm-framework">GLM framework</a> this is the Bernoulli family ($b(\theta) = \log(1+e^\theta)$, $V(\mu) = \mu(1-\mu)$, $\phi = 1$) with its canonical link. Grouped data with $m_i$ trials and $S_i$ successes use the same model with prior weights $m_i$.</p>
 <p>A second derivation explains both the logit and its cousins. Suppose a continuous latent propensity $Y_i^* = \bx_i^\top\bbeta + \varepsilon_i$ and we observe only $Y_i = \ind(Y_i^* > 0)$. Then
 $$\P(Y_i=1) = \P(\varepsilon_i > -\bx_i^\top\bbeta) = F(\bx_i^\top\bbeta)$$
-when $\varepsilon$ has a symmetric CDF $F$. A standard logistic $\varepsilon$ (variance $\pi^2/3$) gives the logit model; a standard normal gives the probit. Since the latent scale is unidentified, the coefficients are only determined relative to the error SD: logit coefficients are roughly $1.6$–$1.8$ times probit coefficients fitted to the same data ($\pi/\sqrt3 \approx 1.81$ matches variances; about $1.7$ matches slopes at the centre).</p>
+when $\varepsilon$ has a symmetric CDF $F$. A standard logistic $\varepsilon$ (variance $\pi^2/3$) gives the logit model; a standard normal gives the probit. Since the latent scale is unidentified, the coefficients are only determined relative to the error SD: logit coefficients are roughly $1.6$–$1.8$ times probit coefficients fitted to the same data ($\pi/\sqrt3 \approx 1.81$ matches the error variances, $4\varphi(0)\approx1.6$ matches the slopes at the centre, and $1.7$ gives the best overall approximation $\operatorname{logit}^{-1}(1.7t)\approx\Phi(t)$).</p>
 <div class="note">
 <p>The latent view has a consequence that is easy to forget: adding an independent covariate to the model <em>changes</em> the other coefficients even when it is uncorrelated with them, because it shrinks the residual variance of $\varepsilon$ and thus rescales everything. This is the <strong>non-collapsibility</strong> of the odds ratio, and it reappears in <a href="#/t/glmm-gee">GLMMs</a> as attenuation of marginal effects.</p>
 </div>`,
@@ -402,7 +402,7 @@ Because the intercept is free, $(\tau,\bbeta)$ is a one-to-one reparameterizatio
 <div class="thm" data-kind="Theorem" data-name="Pseudo-MLE consistency (Gourieroux, Monfort & Trognon, 1984)">
 <p>Suppose $(\bx_i, Y_i)$ are IID with $Y_i\ge 0$, $\E(Y_i\mid\bx_i) = \exp(\bx_i^\top\bbeta_0)$, and standard moment and identifiability conditions hold. Then the Poisson pseudo-MLE $\hat\bbeta$ is consistent and
 $$\sqrt n(\hat\bbeta - \bbeta_0)\dto\N\big(\mathbf 0,\; A^{-1}BA^{-1}\big),\quad A = \E[\mu_i\bx_i\bx_i^\top],\; B = \E[\Var(Y_i\mid\bx_i)\bx_i\bx_i^\top].$$
-More generally, a linear-exponential-family pseudo-likelihood is consistent for a correctly specified mean if and only if it is of that form.</p>
+More generally, a pseudo-likelihood estimator is consistent for <em>every</em> distribution with the correct mean if and only if the assumed family is a linear exponential family in $\mu$ (Poisson, Normal, gamma, binomial and NB with known $k$ are all examples).</p>
 </div>
 <details class="proof"><summary>Proof sketch</summary>
 <p>$\hat\bbeta$ solves $\frac1n\sum_i(Y_i - e^{\bx_i^\top\bbeta})\bx_i = \mathbf 0$. At $\bbeta_0$ its expectation is $\E[\bx_i\,\E(Y_i - \mu_i\mid\bx_i)] = \mathbf 0$, and the population objective $\E[Y\bx^\top\bbeta - e^{\bx^\top\bbeta}]$ is strictly concave, so $\bbeta_0$ is its unique maximizer; standard M-estimation arguments give consistency. A Taylor expansion of the estimating equation gives $\sqrt n(\hat\bbeta - \bbeta_0)\approx A^{-1}n^{-1/2}\sum_i(Y_i - \mu_i)\bx_i$, and the CLT supplies the normal limit with "meat" $B$. When $\Var(Y\mid\bx) = \mu$, $B = A$ and the sandwich reduces to $A^{-1}$.</p>
@@ -474,7 +474,7 @@ and sets the approximation to zero: $\bbeta^{(t+1)} = \bbeta^{(t)} + J^{-1}U$. F
 $$\bbeta^{(t+1)} = \bbeta^{(t)} + \mathcal I(\bbeta^{(t)})^{-1}\,U(\bbeta^{(t)}).$$
 Scoring has two practical advantages: $\mathcal I$ is always positive semidefinite (it is a covariance matrix), so each step is an ascent direction for small enough steps, and $\mathcal I$ is often simpler than $J$.</p>
 <p>For a GLM the observed information is
-$$J(\bbeta) = \mathcal I(\bbeta) - \frac1\phi\sum_i (y_i - \mu_i)\,\frac{\partial}{\partial\eta_i}\!\left[\frac{w_i}{V(\mu_i)g'(\mu_i)}\right]\frac{1}{g'(\mu_i)}\,\bx_i\bx_i^\top,$$
+$$J(\bbeta) = \mathcal I(\bbeta) - \frac1\phi\sum_i (y_i - \mu_i)\,\frac{\partial}{\partial\eta_i}\!\left[\frac{w_i}{V(\mu_i)g'(\mu_i)}\right]\bx_i\bx_i^\top,$$
 which differs from $\mathcal I$ by a term with mean zero. Under the canonical link $w_i/(V g')= w_i$ is constant in $\eta$, the correction vanishes, and <strong>Newton = Fisher scoring</strong>.</p>`,
       },
       {
@@ -787,7 +787,7 @@ $$\Big(g^{-1}\big(\hat\eta_0 - z\,\widehat\se(\hat\eta_0)\big),\; g^{-1}\big(\ha
       {
         title: 'Finite-sample behaviour and remedies',
         html: R`
-<p>All three procedures are first-order approximations. For logistic and Poisson models with few events, Wald intervals undercover, sometimes badly, and their coverage depends on the true parameter value. Profile-likelihood intervals are typically close to nominal at moderate sizes. The second lab runs the experiment: repeated small samples from a logistic model, recording how often each nominal-95% interval covers the true slope.</p>
+<p>All three procedures are first-order approximations, and with few events they part ways. For a logistic slope, the Wald standard error inflates as $|\hat\beta_1|$ grows (the Hauck–Donner mechanism), so Wald tests are typically <em>conservative</em> and lose power; and because the Wald interval is symmetric where the log-likelihood is skewed, its errors pile up on one side. Its actual coverage swings with $n$ and the true $\beta_1$, often well above 95% for tiny samples, which is no virtue: the interval is long in the wrong place. Profile-likelihood intervals follow the shape of $\ell$ and stay within a point or two of nominal in the same settings, erring slightly on the liberal side because the LR statistic's $\chi^2_1$ calibration is itself only first-order. The second lab runs the experiment: repeated small samples from a logistic model, recording how often each nominal-95% interval covers the true slope.</p>
 <p>Refinements when the sample is genuinely small:</p>
 <ul>
 <li><strong>Bartlett correction</strong> of $\Lambda$ (in regular continuous models): divide by its estimated mean $r(1 + b/n)$ to match the $\chi^2_r$ mean, reducing the error in the null distribution from $O(n^{-1})$ to $O(n^{-2})$.</li>
@@ -1161,7 +1161,7 @@ estimated by the sandwich with $\Cov(\by_i)$ replaced by $(\by_i - \hat\bmu_i)(\
 <details class="proof"><summary>Proof sketch</summary>
 <p>Each cluster's contribution has mean zero at the true $\bbeta$ for <em>any</em> fixed weight matrix, because $\E(\by_i - \bmu_i) = \mathbf 0$; the working correlation only changes efficiency. Expanding around the truth, $\hat\bbeta - \bbeta\approx H^{-1}\sum_i D_i^\top\mathbf V_i^{-1}(\by_i - \bmu_i)$, a sum of $K$ independent mean-zero terms; apply the CLT across clusters. The plug-in $\hat\alpha$ has no first-order effect because $\partial U/\partial\alpha$ is a sum of terms proportional to $(\by_i - \bmu_i)$, hence has mean zero and is $O_p(\sqrt K)$, while $\hat\alpha - \alpha^* = O_p(K^{-1/2})$; their product is $O_p(1)$, negligible against the $O_p(\sqrt K)$ score. Optimality when $R$ is correct follows exactly as in the quasi-score optimality theorem, with cluster-level vectors in place of scalars.</p>
 </details>
-<p>Common working correlations: independence ($R = I$: an ordinary GLM fit with a cluster-robust sandwich), exchangeable ($\alpha$ for every pair), AR(1) ($\alpha^{|j-k|}$), and unstructured. Exchangeable or AR(1) gains efficiency for within-cluster covariates when the correlation is substantial; for cluster-level covariates the gain is small. The lab compares naive GLM standard errors, independence GEE and exchangeable GEE in repeated simulations.</p>`,
+<p>Common working correlations: independence ($R = I$: an ordinary GLM fit with a cluster-robust sandwich), exchangeable ($\alpha$ for every pair), AR(1) ($\alpha^{|j-k|}$), and unstructured. Exchangeable or AR(1) gains efficiency for within-cluster covariates when the correlation is substantial; for cluster-level covariates the gain is small, and with equal cluster sizes and a purely cluster-level covariate the exchangeable and independence estimates coincide exactly (every observation in a cluster then receives the same weight). The lab compares naive GLM standard errors, independence GEE and exchangeable GEE in repeated simulations.</p>`,
         lab: 'glmm-gee-sandwich',
       },
       {

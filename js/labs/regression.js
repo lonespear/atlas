@@ -830,7 +830,7 @@
 
   Atlas.lab('weighted-gls-sandwich', {
     title: 'Naive, sandwich, and weighted standard errors',
-    blurb: R`Errors have SD proportional to $x^\gamma$. Each replication fits OLS and WLS (with the correct weights) at a fixed design and records whether four nominal-95% intervals for the slope cover the truth. At $\gamma=0$ all are fine. As $\gamma$ grows the naive OLS interval under-covers, the sandwich intervals recover, HC0 lagging HC3 in small samples — especially with a skewed design that creates high-leverage points — and WLS stays exact while also being narrower.`,
+    blurb: R`Errors have SD proportional to $x^\gamma$. Each replication fits OLS and WLS (with the correct weights) at a fixed design and records whether four nominal-95% intervals for the slope cover the truth. At $\gamma=0$ all are fine. As $\gamma$ grows the naive OLS interval goes wrong — badly under-covering with the skewed design, where the noisiest points also carry the most leverage, and over-covering with the uniform one. The sandwich intervals recover, HC0 lagging HC3 in small samples, and WLS stays exact while also being far more precise.`,
     mount(el, ctx) {
       const { controls, stage, stats } = UI.layout(el);
       const gS = UI.slider(controls, { label: 'Heteroscedasticity $\\gamma$ (SD ∝ $x^\\gamma$)', min: 0, max: 2, step: 0.1, value: 1.2, onChange: reset });

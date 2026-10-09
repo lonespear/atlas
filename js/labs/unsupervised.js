@@ -1163,5 +1163,596 @@
     },
   });
 
-  /* @@LABS@@ */
+  /* ================================================================== Factor analysis & ICA */
+
+  const SOURCES = {
+    uniform: { label: 'Uniform (sub-Gaussian)', draw: r => Math.sqrt(3) * (2 * r.u() - 1) },
+    laplace: { label: 'Laplace (super-Gaussian)', draw: r => (r.u() < 0.5 ? -1 : 1) * -Math.log(1 - r.u()) / Math.SQRT2 },
+    sine: { label: 'Sinusoid (sub-Gaussian)', draw: r => Math.SQRT2 * Math.sin(2 * Math.PI * r.u()) },
+    gauss: { label: 'Gaussian', draw: r => r.normal() },
+  };
+  const kurt = a => { const m = S.mean(a), v = S.variance(a, 0); return S.mean(a.map(x => (x - m) ** 4)) / (v * v) - 3; };
+
+  Atlas.lab('factor-analysis-ica-unmix', {
+    title: 'Unmixing two sources by maximising non-Gaussianity',
+    blurb: 'Two independent sources are mixed by a random matrix and then whitened, which leaves only a rotation unknown. Right: a negentropy-style contrast $\\sum_j[\\E G(y_j)-\\E G(\\nu)]^2$ of the outputs $y = W(\\theta)z$ as the unmixing rotation $\\theta$ varies. Its peaks are the sources. FastICA climbs to one in a few fixed-point steps. Make both sources Gaussian and the curve goes flat: the rotation is unidentifiable.',
+    mount(el, ctx) {
+      const { controls, stage, stats } = UI.layout(el);
+      const s1 = UI.select(controls, { label: 'Source 1', options: Object.keys(SOURCES).map(k => ({ value: k, label: SOURCES[k].label })), value: 'uniform', onChange: newData });
+      const s2 = UI.select(controls, { label: 'Source 2', options: Object.keys(SOURCES).map(k => ({ value: k, label: SOURCES[k].label })), value: 'laplace', onChange: newData });
+      const contrast = UI.segmented(controls, { label: 'Contrast $G$', options: [{ value: 'logcosh', label: 'log cosh' }, { value: 'kurt', label: 'kurtosis' }], value: 'logcosh', onChange: () => { path = []; draw(); } });
+      const th = UI.slider(controls, { label: 'Unmixing rotation $\\theta$ (degrees)', min: 0, max: 90, step: 0.5, value: 20, onInput: () => { path = []; draw(); } });
+      const view = UI.segmented(controls, { label: 'Show', options: [{ value: 'x', label: 'Mixed $x$' }, { value: 'z', label: 'Whitened $z$' }, { value: 'y', label: 'Unmixed $y$' }], value: 'z', onChange: draw });
+      const row = UI.h('div', 'btn-row', controls);
+      UI.button(row, 'Run FastICA', fastica, { primary: true });
+      UI.button(row, 'New mixing', newData);
+      stage.classList.add('two');
+      const pL = new Plot(stage, { width: 420, height: 300, x: [-4, 4], y: [-4, 4], equal: true, title: '' });
+      const pR = new Plot(stage, { width: 420, height: 300, x: [0, 90], y: [0, 1], xlabel: 'θ (degrees)', ylabel: 'contrast', title: 'Non-Gaussianity of the unmixed outputs' });
+      const sK = UI.stat(stats, 'Excess kurtosis of $y_1, y_2$');
+      const sC = UI.stat(stats, 'Recovery $|\\Corr(y, s)|$', { accent: 'accent' });
+      const sF = UI.stat(stats, 'FastICA');
+      let src, X, Z, Atrue, path = [];
+      const EGnu = 0.3745672; // E log cosh(N(0,1))
+      function newData() {
+        const n = 800;
+        src = [ctx.rng.array(n, () => SOURCES[s1.get()].draw(ctx.rng)), ctx.rng.array(n, () => SOURCES[s2.get()].draw(ctx.rng))];
+        const a = ctx.rng.uniform(0, Math.PI), b = ctx.rng.uniform(0, Math.PI), d = ctx.rng.uniform(0.35, 0.8);
+        const R = t => [[Math.cos(t), -Math.sin(t)], [Math.sin(t), Math.cos(t)]];
+        Atrue = S.matmul(S.matmul(R(a), [[1.6, 0], [0, 1.6 * d]]), R(b));
+        X = src[0].map((_, i) => [Atrue[0][0] * src[0][i] + Atrue[0][1] * src[1][i], Atrue[1][0] * src[0][i] + Atrue[1][1] * src[1][i]]);
+        const m = [S.mean(X.map(x => x[0])), S.mean(X.map(x => x[1]))];
+        const C = [[0, 0], [0, 0]];
+        for (const x of X) { const u = [x[0] - m[0], x[1] - m[1]]; for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) C[i][j] += u[i] * u[j] / n; }
+        const E = S.eigSym(C), V = E.vectors;
+        const Wh = [0, 1].map(i => [0, 1].map(j => V[i][0] * V[j][0] / Math.sqrt(E.values[0]) + V[i][1] * V[j][1] / Math.sqrt(E.values[1])));
+        Z = X.map(x => { const u = [x[0] - m[0], x[1] - m[1]]; return [Wh[0][0] * u[0] + Wh[0][1] * u[1], Wh[1][0] * u[0] + Wh[1][1] * u[1]]; });
+        path = [];
+        draw();
+      }
+      const unmix = t => { const c = Math.cos(t), s = Math.sin(t); return [Z.map(z => c * z[0] + s * z[1]), Z.map(z => -s * z[0] + c * z[1])]; };
+      function J(t) {
+        const ys = unmix(t);
+        if (contrast.get() === 'kurt') return ys.reduce((a, y) => a + kurt(y) ** 2, 0);
+        return ys.reduce((a, y) => a + (S.mean(y.map(v => Math.log(Math.cosh(v)))) - EGnu) ** 2, 0);
+      }
+      function fastica() {
+        let w = [ctx.rng.normal(), ctx.rng.normal()], nw = Math.hypot(...w);
+        w = w.map(v => v / nw);
+        path = [toDeg(w)];
+        const kurtMode = contrast.get() === 'kurt';
+        for (let it = 0; it < 30; it++) {
+          let a0 = 0, a1 = 0, gp = 0;
+          for (const z of Z) {
+            const u = w[0] * z[0] + w[1] * z[1];
+            const g = kurtMode ? u * u * u : Math.tanh(u), dg = kurtMode ? 3 * u * u : 1 - Math.tanh(u) ** 2;
+            a0 += z[0] * g; a1 += z[1] * g; gp += dg;
+          }
+          const n = Z.length, w2 = [a0 / n - (gp / n) * w[0], a1 / n - (gp / n) * w[1]], nn = Math.hypot(...w2);
+          const wn = w2.map(v => v / nn), conv = Math.abs(wn[0] * w[0] + wn[1] * w[1]);
+          w = wn; path.push(toDeg(w));
+          if (1 - conv < 1e-10) break;
+        }
+        th.set(Math.round(path[path.length - 1] * 2) / 2);
+        draw(true);
+      }
+      function toDeg(w) { let d = Math.atan2(w[1], w[0]) * 180 / Math.PI; d = ((d % 90) + 90) % 90; return d; }
+      function draw(keepPath) {
+        if (keepPath !== true && path.length && Math.abs(path[path.length - 1] - th.get()) > 0.5) path = [];
+        const t = th.get() * Math.PI / 180, ys = unmix(t), v = view.get();
+        const pts = v === 'x' ? X : v === 'z' ? Z : ys[0].map((a, i) => [a, ys[1][i]]);
+        const lim = Math.max(3, S.quantile(pts.map(p => Math.max(Math.abs(p[0]), Math.abs(p[1]))).sort((a, b) => a - b), 0.99, true) * 1.1);
+        pL.o.title = v === 'x' ? 'Mixed observations x = As' : v === 'z' ? 'Whitened z, with unmixing directions' : 'Unmixed outputs y = W(θ) z';
+        pL.setDomain([-lim, lim], [-lim, lim]).clear();
+        pL.points(pts, { color: 's1', r: 1.6, opacity: 0.45 });
+        if (v === 'z') {
+          const c = Math.cos(t), s = Math.sin(t), L = lim * 0.85;
+          pL.arrow(0, 0, L * c, L * s, { color: 's2', width: 2.2 });
+          pL.arrow(0, 0, -L * s, L * c, { color: 's3', width: 2.2 });
+          pL.text(L * c, L * s, 'w₁', { dx: 6, color: 's2', weight: 600 });
+          pL.text(-L * s, L * c, 'w₂', { dx: 6, color: 's3', weight: 600 });
+        }
+        const grid = S.linspace(0, 90, 91), vals = grid.map(g => J(g * Math.PI / 180)), ym = Math.max(...vals, 1e-4) * 1.15;
+        pR.setDomain([0, 90], [0, ym]).clear();
+        pR.line(grid.map((g, i) => [g, vals[i]]), { color: 'ink', width: 2 });
+        pR.vline(th.get(), { color: 's2', width: 1.5 });
+        if (path.length) {
+          pR.line(path.map(d => [d, J(d * Math.PI / 180)]), { color: 's2', width: 1, opacity: 0.6, dash: '2 3' });
+          path.forEach((d, i) => pR.dot(d, J(d * Math.PI / 180), { color: i === path.length - 1 ? 's2' : 'faint', r: i === path.length - 1 ? 6 : 4, stroke: 'ink' }));
+        }
+        const k1 = kurt(ys[0]), k2 = kurt(ys[1]);
+        sK.set(`${S.fmt(k1, 2)}, ${S.fmt(k2, 2)}`, `sources: ${S.fmt(kurt(src[0]), 2)}, ${S.fmt(kurt(src[1]), 2)}`);
+        const c = (i, j) => Math.abs(S.cor(ys[i], src[j]));
+        const best = Math.max(Math.min(c(0, 0), c(1, 1)), Math.min(c(0, 1), c(1, 0)));
+        sC.set(S.fmt(best, 3), 'worse of the two matched pairs (1 = perfect)');
+        sF.set(path.length ? `${path.length - 1} iterations` : '—', path.length ? `stopped at θ = ${S.fmt(path[path.length - 1], 3)}°` : 'press Run FastICA');
+      }
+      newData();
+    },
+  });
+
+  /* ================================================================== Manifold learning */
+
+  // Colour points by a scalar t in [0,1] using a two-colour ramp, in bins.
+  function rampPoints(p, pts, ts, opts = {}) {
+    const a = Atlas.rgb('s1'), b = Atlas.rgb('s2'), nb = 12;
+    for (let k = 0; k < nb; k++) {
+      const sel = pts.filter((_, i) => Math.min(nb - 1, Math.floor(ts[i] * nb)) === k);
+      if (sel.length) p.points(sel, { color: rgbStr(Atlas.mix(a, b, k / (nb - 1))), r: opts.r || 2.6, opacity: opts.opacity || 0.85 });
+    }
+  }
+  function rankCorr(a, b) {
+    const rk = v => { const idx = v.map((x, i) => [x, i]).sort((p, q) => p[0] - q[0]), r = new Array(v.length); idx.forEach(([, i], k) => { r[i] = k; }); return r; };
+    return S.cor(rk(a), rk(b));
+  }
+  function classicalMDS(D2, q = 2) { // D2: squared distances (n x n arrays)
+    const n = D2.length, rm = D2.map(r => S.mean(r)), gm = S.mean(rm);
+    const B = D2.map((r, i) => Array.from(r, (v, j) => -0.5 * (v - rm[i] - rm[j] + gm)));
+    const E = eigh(B), coords = [];
+    for (let k = 0; k < q; k++) { const v = E.vec(n - 1 - k), s = Math.sqrt(Math.max(E.values[n - 1 - k], 0)); coords.push(v.map(x => x * s)); }
+    return { Y: coords[0].map((_, i) => coords.map(c => c[i])), vals: E.values.slice().reverse() };
+  }
+
+  Atlas.lab('manifold-learning-isomap', {
+    title: 'Unrolling a Swiss roll: Isomap versus linear MDS',
+    blurb: 'Points on a rolled-up sheet in $\\R^3$, coloured by position along the roll. Classical MDS on Euclidean distances (= PCA) squashes the layers together. Isomap replaces distances by shortest paths in a $k$-nearest-neighbour graph and recovers the flat sheet. Raise $k$ until one edge jumps between layers: the geodesics short-circuit and the embedding folds.',
+    mount(el, ctx) {
+      const { controls, stage, stats } = UI.layout(el);
+      const kS = UI.slider(controls, { label: 'Neighbours $k$', min: 3, max: 30, step: 1, value: 8, onChange: compute });
+      const noise = UI.slider(controls, { label: 'Noise SD', min: 0, max: 1.5, step: 0.05, value: 0.1, onChange: newData });
+      const left = UI.segmented(controls, { label: 'Left panel', options: [{ value: 'roll', label: 'Roll (side view)' }, { value: 'mds', label: 'Linear MDS / PCA' }], value: 'mds', onChange: draw });
+      UI.button(controls, 'New sample', newData, { primary: true });
+      stage.classList.add('two');
+      const pL = new Plot(stage, { width: 420, height: 300, x: [-1, 1], y: [-1, 1], equal: true, title: '' });
+      const pR = new Plot(stage, { width: 420, height: 300, x: [-1, 1], y: [-1, 1], equal: true, title: 'Isomap embedding' });
+      const sI = UI.stat(stats, 'Isomap: $|$rank corr$|$ with roll position', { accent: 'accent' });
+      const sP = UI.stat(stats, 'Linear MDS: $|$rank corr$|$');
+      const sS = UI.stat(stats, 'Short-circuit edges');
+      const sG = UI.stat(stats, 'Graph');
+      let X, T, H, iso, mds, keep, nShort, nComp;
+      const n = 240;
+      function newData() {
+        X = []; T = []; H = [];
+        for (let i = 0; i < n; i++) {
+          const t = 1.5 * Math.PI * (1 + 2 * ctx.rng.u()), h = 7 * ctx.rng.u(), s = noise.get();
+          X.push([t * Math.cos(t) + ctx.rng.normal(0, s), h + ctx.rng.normal(0, s), t * Math.sin(t) + ctx.rng.normal(0, s)]); T.push(t); H.push(h);
+        }
+        // Linear MDS on Euclidean distances is PCA on the 3-D coordinates.
+        const m = [0, 1, 2].map(j => S.mean(X.map(x => x[j])));
+        const C = [0, 1, 2].map(a => [0, 1, 2].map(b => S.mean(X.map(x => (x[a] - m[a]) * (x[b] - m[b])))));
+        const E = S.eigSym(C);
+        mds = X.map(x => [0, 1].map(k => [0, 1, 2].reduce((s, j) => s + (x[j] - m[j]) * E.vectors[j][k], 0)));
+        compute();
+      }
+      function compute() {
+        const k = Math.round(kS.get()), D = Array.from({ length: n }, () => new Float64Array(n).fill(Infinity));
+        const d3 = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+        nShort = 0;
+        for (let i = 0; i < n; i++) {
+          D[i][i] = 0;
+          const nb = X.map((x, j) => [d3(X[i], x), j]).sort((a, b) => a[0] - b[0]);
+          for (let t = 1; t <= k; t++) { const [d, j] = nb[t]; if (d < D[i][j]) { if (D[i][j] === Infinity && D[j][i] === Infinity && Math.abs(T[i] - T[j]) > 3) nShort++; D[i][j] = D[j][i] = d; } }
+        }
+        for (let m = 0; m < n; m++) { const Dm = D[m]; for (let i = 0; i < n; i++) { const dim = D[i][m]; if (dim === Infinity) continue; const Di = D[i]; for (let j = 0; j < n; j++) { const v = dim + Dm[j]; if (v < Di[j]) Di[j] = v; } } }
+        // Largest connected component.
+        const comp = new Array(n).fill(-1); nComp = 0;
+        for (let i = 0; i < n; i++) if (comp[i] < 0) { for (let j = 0; j < n; j++) if (D[i][j] < Infinity) comp[j] = nComp; nComp++; }
+        const sizes = new Array(nComp).fill(0); comp.forEach(c => sizes[c]++);
+        const big = S.argmax(sizes);
+        keep = comp.map((c, i) => (c === big ? i : -1)).filter(i => i >= 0);
+        const D2 = keep.map(i => keep.map(j => D[i][j] ** 2));
+        iso = classicalMDS(D2, 2).Y;
+        draw();
+      }
+      function fit(p, pts) {
+        const ex = S.extent(pts.map(q => q[0])), ey = S.extent(pts.map(q => q[1])), px = (ex[1] - ex[0]) * 0.06 || 1, py = (ey[1] - ey[0]) * 0.06 || 1;
+        p.setDomain([ex[0] - px, ex[1] + px], [ey[0] - py, ey[1] + py]).clear();
+      }
+      function draw() {
+        const tn = T.map(t => (t - 1.5 * Math.PI) / (3 * Math.PI));
+        const lp = left.get() === 'roll' ? X.map(x => [x[0], x[2]]) : mds;
+        pL.o.title = left.get() === 'roll' ? 'The data, viewed along the roll axis' : 'Linear MDS on Euclidean distances (= PCA)';
+        fit(pL, lp);
+        rampPoints(pL, lp, tn);
+        fit(pR, iso);
+        rampPoints(pR, iso, keep.map(i => tn[i]));
+        const ci = Math.max(Math.abs(rankCorr(iso.map(y => y[0]), keep.map(i => T[i]))), Math.abs(rankCorr(iso.map(y => y[1]), keep.map(i => T[i]))));
+        const cp = Math.max(Math.abs(rankCorr(mds.map(y => y[0]), T)), Math.abs(rankCorr(mds.map(y => y[1]), T)));
+        sI.set(S.fmt(ci, 3), 'best of the two embedding axes');
+        sP.set(S.fmt(cp, 3));
+        sS.set(String(nShort), nShort ? '<span style="color:var(--bad)">edges joining different layers</span>' : 'no edge jumps between layers');
+        sG.set(nComp === 1 ? 'connected' : `${nComp} components`, nComp === 1 ? '' : `embedding the largest (${keep.length} of ${n} points)`);
+      }
+      newData();
+    },
+  });
+
+  const TSNE_DATA = {
+    sizes: { label: 'Three clusters: tight, medium, diffuse', gen(r) {
+      const X = [], Y = [];
+      [0.3, 1, 3].forEach((s, k) => { for (let i = 0; i < 50; i++) { const x = r.array(10, () => r.normal(0, s)); x[k] += 12; X.push(x); Y.push(k); } });
+      return { X, Y };
+    } },
+    pairs: { label: 'Two pairs of clusters (near / far)', gen(r) {
+      const X = [], Y = [], cs = [[0, 0], [4, 0], [30, 0], [34, 0]];
+      cs.forEach((c, k) => { for (let i = 0; i < 38; i++) { const x = r.array(10, () => r.normal(0, 1)); x[0] += c[0]; X.push(x); Y.push(k); } });
+      return { X, Y };
+    } },
+    noise: { label: 'Pure noise (no clusters)', gen(r) { return { X: r.array(150, () => r.array(10, () => r.normal())), Y: new Array(150).fill(0) }; } },
+    curve: { label: 'A smooth 1-D curve in 10-D', gen(r) {
+      const X = [], Y = [];
+      for (let i = 0; i < 150; i++) { const t = i / 149; const x = r.array(10, () => r.normal(0, 0.15)); x[0] += 6 * Math.cos(3 * t); x[1] += 6 * Math.sin(3 * t); x[2] += 4 * t; X.push(x); Y.push(Math.min(5, Math.floor(t * 6))); }
+      return { X, Y };
+    } },
+  };
+
+  Atlas.lab('manifold-learning-tsne', {
+    title: 't-SNE, live',
+    blurb: 'Exact t-SNE on 150 points in 10 dimensions, coloured by true group. Compare what the map shows with what is true: on “tight, medium, diffuse” the three clusters come out about the same size; on “two pairs” the far pair need not look far; on pure noise, low perplexity invents clusters. Swap the Student-$t$ kernel for a Gaussian one (symmetric SNE) to see the crowding problem: clusters squeeze together, and the between/within separation tile drops sharply (the $t$ kernel typically exaggerates it well beyond its value in the data).',
+    mount(el, ctx) {
+      const { controls, stage, stats } = UI.layout(el);
+      const ds = UI.select(controls, { label: 'Data', options: Object.keys(TSNE_DATA).map(k => ({ value: k, label: TSNE_DATA[k].label })), value: 'sizes', onChange: newData });
+      const perp = UI.slider(controls, { label: 'Perplexity', min: 2, max: 50, step: 1, value: 20, onChange: () => { computeP(); restart(); } });
+      const kern = UI.segmented(controls, { label: 'Map kernel', options: [{ value: 't', label: 'Student-$t$ (t-SNE)' }, { value: 'g', label: 'Gaussian (SNE)' }], value: 't', onChange: restart });
+      const row = UI.h('div', 'btn-row', controls);
+      const loop = ctx.loop(() => { for (let i = 0; i < 4; i++) iterate(); draw(); if (iter >= 1000) return false; });
+      ctx.playButton(row, loop);
+      UI.button(row, 'Restart', restart);
+      stage.classList.add('two');
+      const pL = new Plot(stage, { width: 420, height: 300, x: [-1, 1], y: [-1, 1], equal: true, xticks: 0, yticks: 0, title: '2-D map' });
+      const pR = new Plot(stage, { width: 420, height: 300, x: [0, 1000], y: [0, 3], xlabel: 'iteration', ylabel: 'KL(P‖Q)', title: 'Objective' });
+      const sI = UI.stat(stats, 'Iteration');
+      const sKL = UI.stat(stats, '$\\KL(P\\Vert Q)$', { accent: 'accent' });
+      const sSp = UI.stat(stats, 'Spread ratio diffuse / tight');
+      const sSep = UI.stat(stats, 'Separation: between / within distance');
+      let X, Y, n, P, Ymap, upd, gains, iter, klHist;
+      function newData() { ({ X, Y } = TSNE_DATA[ds.get()].gen(ctx.rng)); n = X.length; computeP(); restart(); }
+      function computeP() {
+        const D = X.map(a => X.map(b => sqN(a, b))), target = Math.log(perp.get());
+        const Pc = Array.from({ length: n }, () => new Float64Array(n));
+        for (let i = 0; i < n; i++) {
+          let lo = 0, hi = Infinity, beta = 1;
+          for (let it = 0; it < 60; it++) {
+            let sum = 0, sdp = 0;
+            for (let j = 0; j < n; j++) { if (j === i) continue; const v = Math.exp(-beta * D[i][j]); Pc[i][j] = v; sum += v; sdp += v * D[i][j]; }
+            if (sum === 0) { beta /= 2; hi = beta * 2; continue; }
+            const H = Math.log(sum) + beta * sdp / sum;
+            for (let j = 0; j < n; j++) Pc[i][j] /= sum;
+            if (Math.abs(H - target) < 1e-5) break;
+            if (H > target) { lo = beta; beta = hi === Infinity ? beta * 2 : (beta + hi) / 2; } else { hi = beta; beta = (beta + lo) / 2; }
+          }
+        }
+        P = Array.from({ length: n }, () => new Float64Array(n));
+        for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) P[i][j] = Math.max((Pc[i][j] + Pc[j][i]) / (2 * n), 1e-12);
+        for (let i = 0; i < n; i++) P[i][i] = 0;
+      }
+      function restart() {
+        loop.stop();
+        Ymap = ctx.rng.array(n, () => [ctx.rng.normal(0, 1e-2), ctx.rng.normal(0, 1e-2)]);
+        upd = Ymap.map(() => [0, 0]); gains = Ymap.map(() => [1, 1]); iter = 0; klHist = [];
+        for (let i = 0; i < 120; i++) iterate();
+        draw();
+      }
+      function iterate() {
+        const tKer = kern.get() === 't', ex = iter < 100 ? 4 : 1, mom = iter < 250 ? 0.5 : 0.8, lr = tKer ? 10 : 2;
+        const num = Array.from({ length: n }, () => new Float64Array(n));
+        let Zs = 0;
+        for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+          const dx = Ymap[i][0] - Ymap[j][0], dy = Ymap[i][1] - Ymap[j][1], d2 = dx * dx + dy * dy;
+          const v = tKer ? 1 / (1 + d2) : Math.exp(-d2);
+          num[i][j] = num[j][i] = v; Zs += 2 * v;
+        }
+        let kl = 0;
+        for (let i = 0; i < n; i++) {
+          let g0 = 0, g1 = 0;
+          for (let j = 0; j < n; j++) {
+            if (j === i) continue;
+            const q = Math.max(num[i][j] / Zs, 1e-12), p = P[i][j];
+            if (i < j) kl += 2 * p * Math.log(p / q);
+            const m = tKer ? 4 * (ex * p - q) * num[i][j] : 4 * (ex * p - q);
+            g0 += m * (Ymap[i][0] - Ymap[j][0]); g1 += m * (Ymap[i][1] - Ymap[j][1]);
+          }
+          const g = [g0, g1];
+          for (let d = 0; d < 2; d++) {
+            gains[i][d] = Math.sign(g[d]) === Math.sign(upd[i][d]) ? gains[i][d] * 0.8 : gains[i][d] + 0.2;
+            if (gains[i][d] < 0.01) gains[i][d] = 0.01;
+            upd[i][d] = mom * upd[i][d] - lr * gains[i][d] * g[d];
+          }
+        }
+        for (let i = 0; i < n; i++) { Ymap[i][0] += upd[i][0]; Ymap[i][1] += upd[i][1]; }
+        const mx = S.mean(Ymap.map(y => y[0])), my = S.mean(Ymap.map(y => y[1]));
+        for (const y of Ymap) { y[0] -= mx; y[1] -= my; }
+        iter++;
+        klHist.push([iter, kl]);
+      }
+      function spread(pts, lab, k) { const c = pts.filter((_, i) => lab[i] === k); let s = 0, m = 0; for (let a = 0; a < c.length; a++) for (let b = a + 1; b < c.length; b++) { s += Math.sqrt(sqN(c[a], c[b])); m++; } return s / m; }
+      function draw() {
+        const ex = S.extent(Ymap.map(y => y[0])), ey = S.extent(Ymap.map(y => y[1])), pad = 0.08 * Math.max(ex[1] - ex[0], ey[1] - ey[0], 1e-6);
+        pL.setDomain([ex[0] - pad, ex[1] + pad], [ey[0] - pad, ey[1] + pad]).clear();
+        if (ds.get() === 'curve') rampPoints(pL, Ymap, X.map((_, i) => i / (n - 1)), { r: 3 });
+        else drawClusters(pL, Ymap, Y, { r: 3, opacity: 0.85 });
+        const kmax = Math.max(1, ...klHist.map(k => k[1]).filter(Number.isFinite));
+        pR.setDomain([0, Math.max(300, iter)], [0, kmax * 1.08]).clear();
+        if (klHist.length) { pR.band(0, 100, { color: 'warn', opacity: 0.08 }); pR.line(klHist, { color: 's1', width: 2 }); }
+        pR.text(50, kmax * 1.02, 'exaggeration', { anchor: 'middle', size: 10, color: 'muted' });
+        sI.set(String(iter));
+        sKL.set(klHist.length ? S.fmt(klHist[klHist.length - 1][1], 4) : '—', iter < 100 ? 'early exaggeration phase' : '');
+        if (ds.get() === 'sizes') sSp.set(S.fmt(spread(Ymap, Y, 2) / spread(Ymap, Y, 0), 3), `in the data: ${S.fmt(spread(X, Y, 2) / spread(X, Y, 0), 3)}`);
+        else sSp.set('—', 'only for the three-cluster data');
+        if (ds.get() === 'sizes' || ds.get() === 'pairs') sSep.set(S.fmt(separation(Ymap), 3), `in the data: ${S.fmt(separation(X), 3)}`);
+        else sSep.set('—', 'only for clustered data');
+      }
+      function separation(pts) {
+        let b = 0, nb = 0, w = 0, nw = 0;
+        for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) { const d = Math.sqrt(sqN(pts[i], pts[j])); if (Y[i] === Y[j]) { w += d; nw++; } else { b += d; nb++; } }
+        return (b / nb) / (w / nw);
+      }
+      newData();
+    },
+  });
+
+  /* ================================================================== Directed graphical models */
+
+  const DAGS = {
+    confound: { label: 'Confounding, mediation, selection', nodes: { Z: [5, 5.2], X: [1.8, 3.2], M: [5, 3.2], Y: [8.2, 3.2], C: [5, 1], D: [8.2, 1] },
+      edges: [['Z', 'X'], ['Z', 'Y'], ['X', 'M'], ['M', 'Y'], ['X', 'C'], ['Y', 'C'], ['C', 'D']], x: 'X', y: 'Y', z: ['Z', 'M'] },
+    mbias: { label: 'M-bias', nodes: { U1: [1.8, 5], U2: [8.2, 5], M: [5, 3.2], X: [1.8, 1.2], Y: [8.2, 1.2] },
+      edges: [['U1', 'X'], ['U1', 'M'], ['U2', 'M'], ['U2', 'Y']], x: 'X', y: 'Y', z: [] },
+    sprinkler: { label: 'Sprinkler (explaining away)', nodes: { Cloudy: [5, 5.3], Sprinkler: [2, 3.4], Rain: [8, 3.4], Wet: [5, 1.9], Slippery: [5, 0.4] },
+      edges: [['Cloudy', 'Sprinkler'], ['Cloudy', 'Rain'], ['Sprinkler', 'Wet'], ['Rain', 'Wet'], ['Wet', 'Slippery']], x: 'Sprinkler', y: 'Rain', z: ['Cloudy'] },
+    ladder: { label: 'Seven-node network', nodes: { A: [1.2, 5], B: [4, 5.3], C: [2.4, 3.3], D: [5.6, 3.3], E: [8.6, 4.6], F: [4, 1.3], G: [7.6, 1.3] },
+      edges: [['A', 'C'], ['B', 'C'], ['B', 'D'], ['C', 'F'], ['D', 'F'], ['E', 'D'], ['E', 'G'], ['F', 'G']], x: 'A', y: 'E', z: ['F'] },
+  };
+  function dagInfo(dag) {
+    const names = Object.keys(dag.nodes), pa = {}, ch = {};
+    for (const v of names) { pa[v] = []; ch[v] = []; }
+    for (const [a, b] of dag.edges) { pa[b].push(a); ch[a].push(b); }
+    const desc = v => { const out = new Set(), st = [...ch[v]]; while (st.length) { const u = st.pop(); if (!out.has(u)) { out.add(u); st.push(...ch[u]); } } return out; };
+    const order = []; const seen = new Set();
+    const visit = v => { if (seen.has(v)) return; seen.add(v); pa[v].forEach(visit); order.push(v); };
+    names.forEach(visit);
+    return { names, pa, ch, desc, order };
+  }
+  // Koller & Friedman's reachable-set algorithm (Bayes-ball).
+  function reachable(info, x, Z) {
+    const anc = new Set(), st = [...Z];
+    while (st.length) { const v = st.pop(); if (!anc.has(v)) { anc.add(v); st.push(...info.pa[v]); } }
+    const vis = new Set(), out = new Set(), q = [[x, 'up']];
+    while (q.length) {
+      const [v, dir] = q.pop(), key = v + dir;
+      if (vis.has(key)) continue;
+      vis.add(key);
+      if (!Z.has(v)) out.add(v);
+      if (dir === 'up' && !Z.has(v)) { info.pa[v].forEach(u => q.push([u, 'up'])); info.ch[v].forEach(u => q.push([u, 'down'])); }
+      else if (dir === 'down') {
+        if (!Z.has(v)) info.ch[v].forEach(u => q.push([u, 'down']));
+        if (anc.has(v)) info.pa[v].forEach(u => q.push([u, 'up']));
+      }
+    }
+    out.delete(x);
+    return out;
+  }
+  function activePaths(info, x, y, Z) {
+    const adj = {};
+    for (const v of info.names) adj[v] = info.pa[v].concat(info.ch[v]);
+    const res = [], path = [x], on = new Set([x]);
+    (function dfs(v) {
+      if (v === y) { res.push(path.slice()); return; }
+      for (const u of adj[v]) if (!on.has(u)) { on.add(u); path.push(u); dfs(u); path.pop(); on.delete(u); }
+    })(x);
+    const isEdge = (a, b) => info.ch[a].includes(b);
+    return res.filter(pth => {
+      for (let k = 1; k < pth.length - 1; k++) {
+        const a = pth[k - 1], m = pth[k], b = pth[k + 1], collider = isEdge(a, m) && isEdge(b, m);
+        if (collider) { if (!Z.has(m) && ![...info.desc(m)].some(d => Z.has(d))) return false; }
+        else if (Z.has(m)) return false;
+      }
+      return true;
+    });
+  }
+
+  Atlas.lab('directed-graphical-models-dsep', {
+    title: 'd-separation explorer',
+    blurb: 'Choose what a click does, then click nodes to set $X$, $Y$ and the conditioning set $Z$ (dark). Active trails between $X$ and $Y$ are highlighted; nodes ringed in blue are d-connected to $X$ given $Z$ (Bayes-ball). The tiles check the verdict against a linear-Gaussian network with random coefficients: the exact partial correlation is zero precisely when the graph says d-separated.',
+    mount(el, ctx) {
+      const { controls, stage, stats } = UI.layout(el);
+      const dsel = UI.select(controls, { label: 'Network', options: Object.keys(DAGS).map(k => ({ value: k, label: DAGS[k].label })), value: 'confound', onChange: load });
+      const mode = UI.segmented(controls, { label: 'Click sets', options: [{ value: 'z', label: 'Toggle $Z$' }, { value: 'x', label: '$X$' }, { value: 'y', label: '$Y$' }], value: 'z' });
+      const mb = UI.toggle(controls, { label: 'Show Markov blanket of $X$', value: false, onChange: draw });
+      const row = UI.h('div', 'btn-row', controls);
+      UI.button(row, 'Clear $Z$', () => { Z.clear(); draw(); });
+      UI.button(row, 'New coefficients', () => { coefs(); draw(); }, { primary: true });
+      const p = new Plot(stage, { width: 640, height: 320, x: [0, 10], y: [0, 6], equal: true, xticks: 0, yticks: 0, grid: false, margin: { t: 10, r: 10, b: 10, l: 10 } });
+      const sV = UI.stat(stats, 'Verdict', { accent: 'accent' });
+      const sT = UI.stat(stats, 'Active trails $X \\leftrightarrow Y$');
+      const sPop = UI.stat(stats, 'Exact partial corr. (linear-Gaussian)');
+      const sSmp = UI.stat(stats, 'Sample partial corr. ($n=2000$)');
+      let dag, info, X, Yn, Z, B;
+      p.onPointer((x, y, e, type) => {
+        if (type !== 'down') return;
+        const r = rData() * 1.4;
+        const hit = info.names.find(v => Math.hypot(dag.nodes[v][0] - x, dag.nodes[v][1] - y) < r);
+        if (!hit) return;
+        const m = mode.get();
+        if (m === 'x') { if (hit === Yn) Yn = X; X = hit; Z.delete(hit); }
+        else if (m === 'y') { if (hit === X) X = Yn; Yn = hit; Z.delete(hit); }
+        else if (hit !== X && hit !== Yn) { if (Z.has(hit)) Z.delete(hit); else Z.add(hit); }
+        draw();
+      });
+      function rData() { return 19 / (p.iw / (p.o.x[1] - p.o.x[0])); }
+      function load() { dag = DAGS[dsel.get()]; info = dagInfo(dag); X = dag.x; Yn = dag.y; Z = new Set(dag.z); coefs(); draw(); }
+      function coefs() { B = {}; for (const [a, b] of dag.edges) B[a + '>' + b] = (ctx.rng.u() < 0.5 ? -1 : 1) * ctx.rng.uniform(0.5, 1); }
+      function covariance() { // exact covariance of the SEM  x_v = sum_pa B x_pa + e_v,  e ~ N(0,1)
+        const N = info.names, idx = Object.fromEntries(N.map((v, i) => [v, i])), k = N.length;
+        const Sg = Array.from({ length: k }, () => new Array(k).fill(0));
+        // Process in topological order: Cov(v, u) for u earlier = sum_pa B Cov(pa, u).
+        const done = [];
+        for (const v of info.order) {
+          const i = idx[v];
+          for (const u of done) { const j = idx[u]; let s = 0; for (const a of info.pa[v]) s += B[a + '>' + v] * Sg[idx[a]][j]; Sg[i][j] = Sg[j][i] = s; }
+          let vv = 1; for (const a of info.pa[v]) for (const b of info.pa[v]) vv += B[a + '>' + v] * B[b + '>' + v] * Sg[idx[a]][idx[b]];
+          Sg[i][i] = vv; done.push(v);
+        }
+        return { Sg, idx };
+      }
+      function partial(Sg, idx, a, b, Zs) {
+        const ids = [idx[a], idx[b], ...[...Zs].map(z => idx[z])];
+        const sub = ids.map(i => ids.map(j => Sg[i][j])), Pm = S.inv(sub);
+        return -Pm[0][1] / Math.sqrt(Pm[0][0] * Pm[1][1]);
+      }
+      function sampleCov() {
+        const N = info.names, idx = Object.fromEntries(N.map((v, i) => [v, i])), k = N.length, n = 2000;
+        const Sg = Array.from({ length: k }, () => new Array(k).fill(0)), x = new Array(k);
+        for (let t = 0; t < n; t++) {
+          for (const v of info.order) { let s = ctx.rng.normal(); for (const a of info.pa[v]) s += B[a + '>' + v] * x[idx[a]]; x[idx[v]] = s; }
+          for (let i = 0; i < k; i++) for (let j = 0; j < k; j++) Sg[i][j] += x[i] * x[j] / n;
+        }
+        return { Sg, idx };
+      }
+      function draw() {
+        const rd = rData(), act = activePaths(info, X, Yn, Z), reach = reachable(info, X, Z);
+        const actEdges = new Set();
+        for (const pth of act) for (let k = 1; k < pth.length; k++) { actEdges.add(pth[k - 1] + '|' + pth[k]); actEdges.add(pth[k] + '|' + pth[k - 1]); }
+        const blanket = new Set();
+        if (mb.get()) { info.pa[X].forEach(v => blanket.add(v)); info.ch[X].forEach(c => { blanket.add(c); info.pa[c].forEach(v => v !== X && blanket.add(v)); }); }
+        p.clear();
+        for (const [a, b] of dag.edges) {
+          const [x0, y0] = dag.nodes[a], [x1, y1] = dag.nodes[b], L = Math.hypot(x1 - x0, y1 - y0), ux = (x1 - x0) / L, uy = (y1 - y0) / L;
+          const on = actEdges.has(a + '|' + b);
+          p.arrow(x0 + ux * rd, y0 + uy * rd, x1 - ux * rd * 1.08, y1 - uy * rd * 1.08, { color: on ? 's2' : 'muted', width: on ? 3.2 : 1.6 });
+        }
+        for (const v of info.names) {
+          const [x, y] = dag.nodes[v];
+          if (blanket.has(v)) p.dot(x, y, { color: 'warn', r: 26, opacity: 0.25, strokeWidth: 0 });
+          if (reach.has(v)) p.dot(x, y, { color: 'accent', r: 23, opacity: 0.2, stroke: 'accent', strokeWidth: 2 });
+          const fill = v === X ? 's1' : v === Yn ? 's3' : Z.has(v) ? 'ink' : 'surface';
+          p.dot(x, y, { color: fill, r: 19, stroke: 'ink', strokeWidth: 1.6 });
+          p.text(x, y, v, { anchor: 'middle', dy: 4, size: v.length > 3 ? 10 : 13, weight: 600, color: fill === 'surface' ? 'ink' : 'surface' });
+        }
+        const sep = !reach.has(Yn);
+        sV.set(sep ? `${X} ⊥ ${Yn} | {${[...Z].join(', ')}}` : `${X} and ${Yn} d-connected`, sep ? '<span style="color:var(--good)">d-separated: independent in every distribution on this DAG</span>' : '<span style="color:var(--bad)">dependence for generic parameters</span>');
+        sT.set(String(act.length), act.length ? act.slice(0, 3).map(t => t.join('–')).join('; ') + (act.length > 3 ? '; …' : '') : 'every trail is blocked');
+        const pc = covariance(), sc = sampleCov();
+        const r0 = partial(pc.Sg, pc.idx, X, Yn, Z), r1 = partial(sc.Sg, sc.idx, X, Yn, Z);
+        sPop.set(Math.abs(r0) < 1e-12 ? '0 (exactly)' : S.fmt(r0, 4));
+        sSmp.set(S.fmt(r1, 3), `±${S.fmt(2 / Math.sqrt(2000 - Z.size - 3), 2)} is noise`);
+      }
+      load();
+    },
+  });
+
+  /* ================================================================== Undirected graphical models */
+
+  function glasso(Sm, lam, maxSweep = 200) {
+    const p = Sm.length, W = Sm.map((r, i) => r.map((v, j) => v + (i === j ? lam : 0))), Bm = Array.from({ length: p }, () => new Array(p - 1).fill(0));
+    for (let sweep = 0; sweep < maxSweep; sweep++) {
+      let change = 0;
+      for (let j = 0; j < p; j++) {
+        const others = [...Array(p).keys()].filter(k => k !== j);
+        const W11 = others.map(a => others.map(b => W[a][b])), s12 = others.map(a => Sm[a][j]), beta = Bm[j];
+        for (let it = 0; it < 200; it++) {
+          let dmax = 0;
+          for (let k = 0; k < p - 1; k++) {
+            let r = s12[k];
+            for (let l = 0; l < p - 1; l++) if (l !== k) r -= W11[k][l] * beta[l];
+            const nb = Math.sign(r) * Math.max(Math.abs(r) - lam, 0) / W11[k][k];
+            dmax = Math.max(dmax, Math.abs(nb - beta[k])); beta[k] = nb;
+          }
+          if (dmax < 1e-10) break;
+        }
+        others.forEach((a, k) => { const v = W11[k].reduce((s, w, l) => s + w * beta[l], 0); change += Math.abs(v - W[a][j]); W[a][j] = W[j][a] = v; });
+      }
+      if (change < 1e-9) break;
+    }
+    const Om = Array.from({ length: p }, () => new Array(p).fill(0));
+    for (let j = 0; j < p; j++) {
+      const others = [...Array(p).keys()].filter(k => k !== j), beta = Bm[j];
+      const w12b = others.reduce((s, a, k) => s + W[a][j] * beta[k], 0), o22 = 1 / (W[j][j] - w12b);
+      Om[j][j] = o22; others.forEach((a, k) => { Om[a][j] = -beta[k] * o22; });
+    }
+    for (let i = 0; i < p; i++) for (let j = i + 1; j < p; j++) { const v = Math.abs(Om[i][j]) < Math.abs(Om[j][i]) ? Om[i][j] : Om[j][i]; Om[i][j] = Om[j][i] = v; }
+    return Om;
+  }
+  const pcorOf = Om => Om.map((r, i) => r.map((v, j) => (i === j ? 1 : -v / Math.sqrt(Om[i][i] * Om[j][j]))));
+  const corOf = Sg => Sg.map((r, i) => r.map((v, j) => v / Math.sqrt(Sg[i][i] * Sg[j][j])));
+
+  Atlas.lab('undirected-graphical-models-ggm', {
+    title: 'The graph lives in the precision matrix',
+    blurb: 'A Gaussian graphical model on 9 variables. Left: a matrix heat map (blue positive, red negative; dots mark true edges). The correlation matrix is dense — almost every pair is correlated — while the partial correlations, i.e. the rescaled precision matrix, are zero exactly off the graph. Right: the graphical lasso estimate at penalty $\\lambda$ (green = correct edge, red = false edge, dashed = missed edge). Shrink $n$ and watch the sample precision matrix become useless while the lasso still finds structure. The hub graph is the hard case: strongly correlated leaves tempt the lasso into false leaf–leaf edges.',
+    mount(el, ctx) {
+      const { controls, stage, stats } = UI.layout(el);
+      const struct = UI.select(controls, { label: 'True graph', options: [{ value: 'chain', label: 'Chain' }, { value: 'star', label: 'Hub (star)' }, { value: 'grid', label: '3 × 3 grid' }, { value: 'random', label: 'Random sparse' }], value: 'chain', onChange: build });
+      const nS = UI.slider(controls, { label: 'Sample size $n$', min: 15, max: 1000, step: 5, value: 200, onChange: sample });
+      const lamS = UI.slider(controls, { label: 'Penalty $\\lambda$', min: 0.005, max: 0.6, log: true, value: 0.2, fmt: v => v.toFixed(3), onChange: fit });
+      const mat = UI.segmented(controls, { label: 'Matrix shown', options: [{ value: 'cor', label: 'True corr.' }, { value: 'pc', label: 'True partial corr.' }, { value: 'spc', label: 'Sample partial corr.' }, { value: 'gl', label: 'Glasso partial corr.' }], value: 'cor', onChange: draw });
+      UI.button(controls, 'New sample', sample, { primary: true });
+      stage.classList.add('two');
+      const pM = new Plot(stage, { width: 420, height: 300, x: [0, 9], y: [0, 9], equal: true, xticks: 0, yticks: 0, grid: false, title: '' });
+      const pG = new Plot(stage, { width: 420, height: 300, x: [-1.3, 1.3], y: [-1.3, 1.3], equal: true, xticks: 0, yticks: 0, grid: false, title: 'Graphical lasso vs. truth' });
+      const sE = UI.stat(stats, 'Edges: correct / false / missed', { accent: 'accent' });
+      const sC = UI.stat(stats, 'Largest $|$corr$|$ among non-edges');
+      const sPc = UI.stat(stats, 'Largest $|$glasso partial corr$|$ among non-edges');
+      const p = 9;
+      let Om, Sig, edges, R, Ohat;
+      const isEdge = (i, j) => Math.abs(Om[i][j]) > 1e-12 && i !== j;
+      function build() {
+        Om = Array.from({ length: p }, (_, i) => Array.from({ length: p }, (_, j) => (i === j ? 1 : 0)));
+        const add = (i, j, w) => { Om[i][j] = Om[j][i] = w; };
+        const s = struct.get();
+        if (s === 'chain') for (let i = 0; i < p - 1; i++) add(i, i + 1, -0.45);
+        else if (s === 'star') for (let i = 1; i < p; i++) add(0, i, -0.3);
+        else if (s === 'grid') { for (let r = 0; r < 3; r++) for (let c = 0; c < 3; c++) { const i = 3 * r + c; if (c < 2) add(i, i + 1, -0.25); if (r < 2) add(i, i + 3, -0.25); } }
+        else for (let i = 0; i < p; i++) for (let j = i + 1; j < p; j++) if (ctx.rng.u() < 0.2) add(i, j, (ctx.rng.u() < 0.5 ? -1 : 1) * ctx.rng.uniform(0.25, 0.45));
+        for (let t = 0; t < 60 && eigh(Om).values[0] < 0.15; t++) for (let i = 0; i < p; i++) for (let j = 0; j < p; j++) if (i !== j) Om[i][j] *= 0.9;
+        Sig = S.inv(Om);
+        edges = [];
+        for (let i = 0; i < p; i++) for (let j = i + 1; j < p; j++) if (isEdge(i, j)) edges.push([i, j]);
+        sample();
+      }
+      function sample() {
+        const n = Math.round(nS.get()), L = S.cholesky(Sig), Xs = [];
+        for (let t = 0; t < n; t++) { const z = ctx.rng.array(p, () => ctx.rng.normal()); Xs.push(L.map(r => r.reduce((s, l, k) => s + l * z[k], 0))); }
+        const m = Array.from({ length: p }, (_, j) => S.mean(Xs.map(x => x[j])));
+        const C = Array.from({ length: p }, (_, a) => Array.from({ length: p }, (_, b) => Xs.reduce((s, x) => s + (x[a] - m[a]) * (x[b] - m[b]), 0) / n));
+        R = corOf(C);
+        fit();
+      }
+      function fit() { Ohat = glasso(R, lamS.get()); draw(); }
+      function heat(M, title) {
+        pM.o.title = title; pM.setDomain([0, 9], [0, 9]).clear();
+        const pos = Atlas.rgb('s1'), neg = Atlas.rgb('s4'), bg = Atlas.rgb('surface');
+        for (let i = 0; i < p; i++) for (let j = 0; j < p; j++) {
+          const v = i === j ? 0 : Math.max(-1, Math.min(1, M[i][j])), c = Atlas.mix(bg, v >= 0 ? pos : neg, Math.min(1, Math.abs(v) * 1.6));
+          pM.rect(j, 8 - i, j + 1, 9 - i, { color: i === j ? 'var(--surface-3)' : rgbStr(c), opacity: 1 });
+          if (isEdge(i, j)) pM.dot(j + 0.5, 8.5 - i, { color: 'ink', r: 2, strokeWidth: 0 });
+        }
+      }
+      function draw() {
+        const m = mat.get();
+        let sp = null;
+        try { sp = pcorOf(S.inv(R)); } catch (e) { sp = null; }
+        if (m === 'cor') heat(corOf(Sig), 'True correlation matrix');
+        else if (m === 'pc') heat(pcorOf(Om), 'True partial correlations (−Ω scaled)');
+        else if (m === 'spc') heat(sp || R.map(r => r.map(() => 0)), 'Partial correlations from inverting the sample correlation');
+        else heat(pcorOf(Ohat), 'Graphical-lasso partial correlations');
+        const pos = i => { const a = Math.PI / 2 - 2 * Math.PI * i / p; return [Math.cos(a), Math.sin(a)]; };
+        pG.clear();
+        let tp = 0, fp = 0, fn = 0;
+        for (let i = 0; i < p; i++) for (let j = i + 1; j < p; j++) {
+          const est = Math.abs(Ohat[i][j]) > 1e-8, tru = isEdge(i, j), [a, b] = [pos(i), pos(j)];
+          if (est && tru) { tp++; pG.segment(a[0], a[1], b[0], b[1], { color: 'good', width: 2.6 }); }
+          else if (est) { fp++; pG.segment(a[0], a[1], b[0], b[1], { color: 'bad', width: 2 }); }
+          else if (tru) { fn++; pG.segment(a[0], a[1], b[0], b[1], { color: 'warn', width: 1.6, dash: '4 4' }); }
+        }
+        for (let i = 0; i < p; i++) { const q = pos(i); pG.dot(q[0], q[1], { color: 'surface', r: 11, stroke: 'ink' }); pG.text(q[0], q[1], String(i + 1), { anchor: 'middle', dy: 4, size: 11, weight: 600 }); }
+        const cs = corOf(Sig), pg = pcorOf(Ohat);
+        let mc = 0, mg = 0;
+        for (let i = 0; i < p; i++) for (let j = i + 1; j < p; j++) if (!isEdge(i, j)) { mc = Math.max(mc, Math.abs(cs[i][j])); mg = Math.max(mg, Math.abs(pg[i][j])); }
+        sE.set(`${tp} / ${fp} / ${fn}`, `${edges.length} true edges`);
+        sC.set(S.fmt(mc, 3), 'true correlation — far from zero');
+        sPc.set(S.fmt(mg, 3), 'true value is exactly 0');
+      }
+      build();
+    },
+  });
 })();

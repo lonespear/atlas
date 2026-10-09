@@ -264,7 +264,7 @@ and $G(x) = \exp(-e^{-y}) = \exp\{-(1+\xi\frac{x-\mu}{\sigma})^{-1/\xi}\}$ on $\
 <p>To see convergence in practice we need concrete normalising constants. A choice that works for all the standard parents (justified on the <a href="#/t/gev-distribution">next topic</a> via the von Mises conditions) is
 $$b_n = F^{\leftarrow}(1 - 1/n),\qquad a_n = \frac{\bar F(b_n)}{f(b_n)} = \frac{1}{n f(b_n)},$$
 the $1-1/n$ quantile and the reciprocal hazard there. With these constants the limit is the standard $G_\xi$ for <em>every</em> parent, which makes different parents directly comparable. In the lab, maxima are drawn exactly by inverse transform: $M_n \overset{d}{=} F^{\leftarrow}(U^{1/n})$ for $U\sim\text{Unif}(0,1)$, so even block sizes of $10^6$ cost nothing.</p>
-<p>Things to try: the exponential converges almost immediately; the normal converges painfully slowly, and its histogram leans left of the Gumbel density even at $n = 10^5$ (the fitted shape $\hat\xi$ stays negative); the Cauchy and Pareto converge quickly to their Fréchet limits; the uniform's limit $\Psi_1$ is reached essentially exactly.</p>`,
+<p>Things to try: the exponential converges almost immediately; the Cauchy and Pareto converge quickly to their Fréchet limits; the uniform's limit $\Psi_1$ is reached essentially exactly. The normal is the instructive case. At $n = 365$ the fitted shape of the simulated maxima is about $-0.08$; at $n = 10^6$ the histogram is visually indistinguishable from the Gumbel density and passes a Kolmogorov–Smirnov test with 4000 maxima, yet the fitted $\hat\xi$ is still about $-0.045 \pm 0.01$ — clearly negative, and close to the penultimate shape discussed next.</p>`,
         lab: 'fisher-tippett-convergence',
       },
       {
@@ -907,7 +907,7 @@ using $m'(t) = t\,m(t) - 1$. Since $m(t) = 1/t - 1/t^3 + O(t^{-5})$, $r'(x) = 1/
       {
         title: 'Quantifying the trade-off by simulation',
         html: R`
-<p>With a known parent we can compute the bias–variance trade-off directly: repeatedly simulate a sample, fit a GPD at each of a grid of thresholds, and record the error of an extreme quantile estimate. The lab below does this for the $0.999$ quantile and plots squared bias, variance and MSE against the fraction of data used. For the exact GPD parent the bias is negligible at every threshold and the lowest threshold wins; for the Student $t$ there is a clear interior optimum; for the normal, the bias decays so slowly that the optimum sits at a surprisingly low threshold where bias and variance are both substantial.</p>`,
+<p>With a known parent we can compute the bias–variance trade-off directly: repeatedly simulate a sample, fit a GPD at each of a grid of thresholds, and record the error of an extreme quantile estimate. The lab below does this for the $0.9999$ quantile — an extrapolation beyond samples of a few thousand — and plots squared bias, variance and MSE against the fraction of data used. For the exact GPD parent the bias is negligible at every threshold and the lowest threshold (largest $k$) wins. For the Student $t_4$ there is a clear interior optimum, around the top 15% of a sample of 2000, beyond which the squared bias grows rapidly. The normal also has an interior optimum at a fairly low threshold, where the squared bias is already a sizeable fraction (roughly a third) of the MSE: with logarithmically slow convergence no threshold is free of bias, so the best one can do is balance it.</p>`,
         lab: 'threshold-selection-tradeoff',
       },
       {

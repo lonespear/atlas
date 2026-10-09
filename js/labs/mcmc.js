@@ -563,7 +563,7 @@
 
   Atlas.lab('gibbs-sampling-normal', {
     title: 'Gibbs for a normal model with a semi-conjugate prior',
-    blurb: 'Data $y_i\\sim\\N(\\mu,\\sigma^2)$ (truth $\\mu=2$, $\\sigma=1.5$); priors $\\mu\\sim\\N(0,\\tau_0^2)$, $\\sigma^2\\sim\\text{Inv-Gamma}(2,2)$. The sampler alternates the normal conditional for $\\mu$ (horizontal moves) and the inverse-gamma conditional for $\\sigma^2$ (vertical moves). Contours show the exact posterior computed on a grid. A tight prior that conflicts with the data creates dependence between $\\mu$ and $\\sigma$, and the zig-zag slows down.',
+    blurb: 'Data $y_i\\sim\\N(\\mu,\\sigma^2)$ (truth $\\mu=2$, $\\sigma=1.5$); priors $\\mu\\sim\\N(0,\\tau_0^2)$, $\\sigma^2\\sim\\text{Inv-Gamma}(2,2)$. The sampler alternates the normal conditional for $\\mu$ (horizontal moves) and the inverse-gamma conditional for $\\sigma^2$ (vertical moves). Contours show the exact posterior computed on a grid. Here $\\mu$ and $\\sigma$ are nearly uncorrelated a posteriori, so Gibbs mixes almost like IID sampling (lag-1 ACF near 0), in contrast to the correlated Gaussian above. A tight prior far from the data moves the posterior and inflates $\\sigma$, and Gibbs still tracks it exactly.',
     mount(el, ctx) {
       const { controls, stage, stats } = UI.layout(el);
       const ns = UI.slider(controls, { label: 'Sample size $n$', min: 3, max: 200, step: 1, value: 10, onChange: newData });
@@ -855,7 +855,7 @@
 
   Atlas.lab('slice-sampling-stepout', {
     title: 'Stepping out and shrinking a slice',
-    blurb: 'Animated mode shows one update at a time: draw a height under $f(x_0)$, step out in units of $w$ until both ends leave the slice (green: where $f>u$), then propose uniformly and shrink toward $x_0$ after each rejection (red). Vary $w$ over three orders of magnitude: the sampler stays exact and the cost changes only modestly. On the separated modes, a small $w$ never crosses the gap.',
+    blurb: 'Animated mode shows one update at a time: draw a height under $f(x_0)$, step out in units of $w$ until both ends leave the slice (green: where $f>u$), then propose uniformly and shrink toward $x_0$ after each rejection (red). Vary $w$ over three orders of magnitude: the sampler stays exact and the cost changes only modestly. On the separated modes, a small $w$ almost never crosses the gap (the estimate of $\\P(x>0)$ is then badly off); a $w$ wider than the gap fixes it.',
     mount(el, ctx) {
       const { controls, stage, stats } = UI.layout(el);
       const tsel = UI.select(controls, { label: 'Target', options: Object.keys(SL).map(k => ({ value: k, label: SL[k].label })), value: 'bimodal', onChange: reset });
@@ -988,7 +988,7 @@
         const r = ctx.rng, h = hs.get(), sh = Math.sqrt(h);
         // ULA
         let y = xu + 0.5 * h * T.g(xu) + sh * r.normal();
-        if (!(Math.abs(y) < 1e6)) { blow++; y = 0; }
+        if (!(Math.abs(y) < 100)) { blow++; y = 0; }
         xu = y; ua.push(xu);
         // MALA
         const gx = T.g(xm), z = xm + 0.5 * h * gx + sh * r.normal(), gz = T.g(z);
@@ -1386,10 +1386,10 @@
 
   Atlas.lab('hierarchical-mcmc-eight', {
     title: 'Eight schools: centered vs. non-centered HMC',
-    blurb: 'HMC (fixed $\\varepsilon$ and $L$) on the eight-schools model with $\\mu\\sim\\N(0,5^2)$, $\\tau\\sim$ half-Cauchy$(0,5)$, run in both parameterizations at once. Each dot is a draw of $(\\theta_1,\\log\\tau)$; red dots mark divergent transitions. With the real standard errors ($k=1$) the data are weak and the centered sampler cannot enter the funnel\'s neck. Shrink the standard errors (small $k$) to make the data strong, and the verdict reverses.',
+    blurb: 'HMC (fixed $\\varepsilon$ and $L$) on the eight-schools model with $\\mu\\sim\\N(0,5^2)$, $\\tau\\sim$ half-Cauchy$(0,5)$, run in both parameterizations at once. Each dot is a draw of $(\\theta_1,\\log\\tau)$; red dots mark divergent transitions. With the real standard errors ($k=1$) the data are weak and the centered sampler cannot enter the funnel\'s neck. Shrink the standard errors ($k\\approx 0.25$) to make the data strong, and the verdict reverses: now the non-centered chain mixes slowly and diverges, because its likelihood forms the funnel.',
     mount(el, ctx) {
       const { controls, stage, stats } = UI.layout(el);
-      const ks = UI.slider(controls, { label: 'Standard-error multiplier $k$', min: 0.05, max: 2, value: 1, log: true, fmt: v => v.toFixed(2), onChange: reset });
+      const ks = UI.slider(controls, { label: 'Standard-error multiplier $k$', min: 0.1, max: 2, value: 1, log: true, fmt: v => v.toFixed(2), onChange: reset });
       const es = UI.slider(controls, { label: 'Step size $\\varepsilon$', min: 0.02, max: 0.6, value: 0.2, log: true, fmt: v => v.toFixed(3), onChange: reset });
       const Ls = UI.slider(controls, { label: 'Leapfrog steps $L$', min: 3, max: 60, step: 1, value: 15, onChange: reset });
       const row = UI.h('div', 'btn-row', controls);

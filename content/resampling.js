@@ -98,7 +98,7 @@ versus $O(n^{-1/2})$ for the normal approximation. One-sided studentized bounds 
         html: R`
 <p>Consistency rests on smoothness of $T$ and on the resampling mimicking how the data were generated. Break either and the bootstrap can be confidently wrong.</p>
 <div class="warn" data-name="Extremes and boundaries">
-<p>For $X_i \sim \text{Unif}(0,\theta)$ and $T_n = X_{(n)}$, $n(\theta - X_{(n)})/\theta \dto \text{Exp}(1)$, a continuous law. But $\P^*(X^*_{(n)} = X_{(n)}) \to 1-e^{-1}$, so the bootstrap law has an atom at 0 and never converges to it. The maximum is not a smooth functional of $F$. Fixes: the $m$-out-of-$n$ bootstrap ($m\to\infty$, $m/n\to0$), or the parametric bootstrap. Try "Uniform" with "maximum" in the first lab.</p>
+<p>For $X_i \sim \text{Unif}(0,\theta)$ and $T_n = X_{(n)}$, $n(\theta - X_{(n)})/\theta \dto \text{Exp}(1)$, a continuous law. But $\P^*(X^*_{(n)} = X_{(n)}) \to 1-e^{-1}$, so the bootstrap law has an atom at 0 and never converges to it. The maximum is not a smooth functional of $F$. Fixes: the <a href="#/t/subsampling">$m$-out-of-$n$ bootstrap</a> ($m\to\infty$, $m/n\to0$), or the parametric bootstrap. Try "Uniform" with "maximum" in the first lab.</p>
 </div>
 <div class="warn" data-name="Heavy tails">
 <p>If $\E X^2 = \infty$ (e.g. a Pareto with $\alpha<2$), the bootstrap of the mean is inconsistent: the bootstrap distribution converges to a <em>random</em> limit (Athreya, 1987). For the Cauchy, the sample mean has no limiting variance at all. Robust statistics (median, trimmed mean) restore validity.</p>
@@ -114,11 +114,11 @@ versus $O(n^{-1/2})$ for the normal approximation. One-sided studentized bounds 
 <table>
 <thead><tr><th>Variant</th><th>Resample from</th><th>Use when</th></tr></thead>
 <tbody>
-<tr><td>Parametric</td><td>$F_{\hat\theta}$ (fitted model)</td><td>Model is trusted; small $n$; extremes</td></tr>
-<tr><td>Residual (regression)</td><td>$\hat y_i + e^*_i$, $e^*$ drawn from residuals</td><td>Fixed design, homoscedastic errors</td></tr>
-<tr><td>Pairs (regression)</td><td>$(x_i, y_i)$ pairs</td><td>Random design or heteroscedasticity</td></tr>
-<tr><td>Wild</td><td>$\hat y_i + e_i v_i$, $\E v_i=0$, $\E v_i^2=1$</td><td>Heteroscedastic errors, fixed design</td></tr>
-<tr><td>Block / stationary</td><td>Contiguous blocks</td><td>Time series, spatial data</td></tr>
+<tr><td><a href="#/t/parametric-bootstrap">Parametric</a></td><td>$F_{\hat\theta}$ (fitted model)</td><td>Model is trusted; small $n$; extremes</td></tr>
+<tr><td><a href="#/t/bootstrap-regression">Residual (regression)</a></td><td>$\hat y_i + e^*_i$, $e^*$ drawn from residuals</td><td>Fixed design, homoscedastic errors</td></tr>
+<tr><td><a href="#/t/bootstrap-regression">Pairs (regression)</a></td><td>$(x_i, y_i)$ pairs</td><td>Random design or heteroscedasticity</td></tr>
+<tr><td><a href="#/t/bootstrap-regression">Wild</a></td><td>$\hat y_i + e_i v_i$, $\E v_i=0$, $\E v_i^2=1$</td><td>Heteroscedastic errors, fixed design</td></tr>
+<tr><td><a href="#/t/block-bootstrap">Block / stationary</a></td><td>Contiguous blocks</td><td>Time series, spatial data</td></tr>
 <tr><td>Bayesian</td><td>Dirichlet$(1,\dots,1)$ weights on data</td><td>Posterior under a nonparametric model</td></tr>
 </tbody>
 </table>

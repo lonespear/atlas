@@ -966,7 +966,7 @@ For a linear smoother $\hat y=Sy$ (with $S$ not depending on $y$), $\text{df}=\t
 </details>
 <p>Degrees of freedom so defined measure how strongly the fit chases its own data. They equal the parameter count for least squares, $\sum d_j^2/(d_j^2+\lambda)$ for <a href="#/t/ridge-regression">ridge</a>, and (in expectation) the number of nonzero coefficients for the <a href="#/t/lasso">lasso</a>. For best-subset selection they <em>exceed</em> the size of the chosen model, because the selection itself adapts to $y$.</p>
 <div class="def" data-name="Mallows’ Cp">
-<p>With $\hat\sigma^2$ estimated from the largest model (unbiased if that model contains $\mu$'s column space),
+<p>With $\hat\sigma^2$ estimated from the largest model (unbiased if $\mu$ lies in that model's column space),
 $$\hat R(S)=\text{RSS}_S+2|S|\hat\sigma^2,\qquad\text{or in Mallows' normalization}\qquad C_p(S)=\frac{\text{RSS}_S}{\hat\sigma^2}-n+2|S| .$$
 $\hat R(S)$ is unbiased for $R(S)$ when $\sigma^2$ is known; models with negligible bias have $C_p\approx|S|$.</p>
 </div>`,

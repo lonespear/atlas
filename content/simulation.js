@@ -22,7 +22,7 @@
       output: 'A deterministic sequence fully determined by the seed',
       strengths: 'Fast, reproducible, jumpable into independent streams; good generators pass TestU01 BigCrush',
       weaknesses: 'Finite period and hidden lattice/linear structure; weak generators (RANDU, low LCG bits) bias results silently',
-      complexity: R`$O(1)$ per draw; state from 64 bits (LCG, PCG) to about 2.5 KB (MT19937)`,
+      complexity: R`$O(1)$ per draw; state from 64–128 bits (LCG, PCG) to about 2.5 KB (MT19937)`,
     },
     sections: [
       {
@@ -254,7 +254,7 @@ Thus $\mathbf h = (9,-6,1)$ is in the dual lattice and $9u_n - 6u_{n+1} + u_{n+2
       {
         title: 'Numerical inversion and its pitfalls',
         html: R`
-<p>Many important laws (normal, gamma, beta, Student-$t$) have no closed-form quantile function. Options are: a high-accuracy rational approximation (Wichura's AS 241 gives the normal quantile to about $10^{-16}$); root finding on $F(x) = u$ by bisection, secant or Newton ($x\leftarrow x - (F(x)-u)/f(x)$, quadratically convergent near the root if $f$ is positive and smooth there); or interpolation of a precomputed table (Hörmann & Leydold's polynomial interpolation achieves near machine accuracy with a fixed setup cost). When none is cheap, <a href="#/t/rejection-sampling">rejection</a> or <a href="#/t/transformation-methods">transformations</a> are usually faster.</p>
+<p>Many important laws (normal, gamma, beta, Student-$t$) have no closed-form quantile function. Options are: a high-accuracy rational approximation (Wichura's AS 241 gives the normal quantile to about $10^{-16}$); root finding on $F(x) = u$ by bisection, secant or Newton ($x\leftarrow x - (F(x)-u)/f(x)$, quadratically convergent near the root if $f$ is positive and smooth there); or interpolation of a precomputed table (the polynomial-interpolation inversion of Derflinger, Hörmann & Leydold, 2010, achieves near machine accuracy after a one-time setup). When none is cheap, <a href="#/t/rejection-sampling">rejection</a> or <a href="#/t/transformation-methods">transformations</a> are usually faster.</p>
 <div class="warn" data-name="Floating-point tails">
 <p>Uniform doubles are spaced $2^{-53}$ apart near 1 (and the generator's grid is usually no finer near 0). So $-\log(1-U)$ never exceeds about $36.7$, and normal draws by inversion never exceed roughly $8.2$ in absolute value. For ordinary work this is invisible; for estimating $\P(X>10)$ it is the whole answer. Compute in the log or survival scale and use <a href="#/t/importance-sampling">importance sampling</a> for rare events.</p>
 </div>
@@ -1006,7 +1006,7 @@ whose absolute value is at most $\sup_t\lvert F_n(t)-t\rvert\int_0^1\lvert f'\rv
 <li>$f$ has <em>effective dimension $s$ in the superposition sense</em> if the components with $\lvert u\rvert\le s$ carry, say, 99% of the variance.</li>
 <li>$f$ has <em>effective dimension $s$ in the truncation sense</em> if the components with $u\subseteq\{1,\dots,s\}$ carry 99%.</li>
 </ul>
-<p>Low-discrepancy points are extremely well distributed in their low-dimensional projections, especially the leading coordinates, so integrands dominated by low-order and leading-coordinate effects are integrated at nearly the one- or two-dimensional rate. Constructions such as the Brownian bridge or principal-component path generation reorder a simulation's inputs so that the important variation sits in the first coordinates. Sloan and Woźniakowski (1998) formalized this with <em>weighted</em> function spaces in which coordinate $j$ has importance $\gamma_j$: if $\sum_j\gamma_j< \infty$, QMC worst-case errors are bounded independently of $d$.</p>
+<p>Low-discrepancy points are extremely well distributed in their low-dimensional projections, especially the leading coordinates, so integrands dominated by low-order and leading-coordinate effects are integrated at nearly the one- or two-dimensional rate. Constructions such as the Brownian bridge or principal-component path generation reorder a simulation's inputs so that the important variation sits in the first coordinates. Sloan and Woźniakowski (1998) formalized this with <em>weighted</em> function spaces in which coordinate $j$ has importance $\gamma_j$: if $\sum_j\gamma_j< \infty$, there are QMC rules whose worst-case error is bounded independently of $d$.</p>
 <div class="note">
 <p>QMC therefore sits between quadrature and Monte Carlo. Like quadrature it exploits smoothness; like Monte Carlo it is indifferent to nominal dimension as long as the integrand's variation lives in a few dimensions. Its failure modes are the reverse: genuinely high-dimensional interactions and discontinuities not aligned with the axes.</p>
 </div>`,

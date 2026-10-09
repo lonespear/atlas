@@ -1024,7 +1024,7 @@
         p.legend([{ label: 'positive part of √n μ̂', color: 's1', fill: true }, { label: 'unconstrained √n X̄', color: 'ink', dash: true }]);
         label(s1, R`$\P(\hat\mu = 0)$`); s1.set((100 * zero / reps).toFixed(1) + '%', m0 === 0 ? 'theory 50%' : '');
         label(s2, R`LRT of $\mu=0$ with $\chi^2_1$ cutoff`); s2.set((100 * rej / reps).toFixed(1) + '%', m0 === 0 ? 'nominal 5%; true limit ½χ²₀ + ½χ²₁ gives 2.5%' : 'rejection rate (power)');
-        label(s3, R`Wald 95% coverage of $\mu_0$`); s3.set((100 * cov / reps).toFixed(1) + '%');
+        label(s3, R`Wald 95% coverage of $\mu_0$`); s3.set((100 * cov / reps).toFixed(1) + '%', 'interval max(X̄,0) ± 1.96/√n');
       }
       function draw() { const k = sc.get(); if (k === 'ns') drawNS(); else if (k === 'mix') drawMix(); else drawBd(); }
       layoutCtl();
@@ -1107,7 +1107,7 @@
 
   Atlas.lab('fisher-information-crlb', {
     title: 'Location estimators against the Cramér–Rao bound',
-    blurb: R`For a location family with known shape, the bound for unbiased estimators of the centre is $1/(nI)$, so $n\Var$ can never fall below $1/I$ (dashed line) — asymptotically, and for unbiased estimators. Bars are simulated $n\Var$ for four estimators; ticks mark their asymptotic values. Efficiency depends on the model: the mean is optimal for the normal and useless for the Cauchy; the median is optimal for the Laplace; the MLE tracks the bound everywhere.`,
+    blurb: R`For a location family with known shape, every unbiased estimator of the centre has $n\Var \ge 1/I$ (dashed line); the estimators here are unbiased by symmetry (except the Cauchy sample mean, which has no mean at all). Bars are simulated $n\Var$; black ticks mark asymptotic values. Efficiency depends on the model: the mean is optimal for the normal and useless for the Cauchy, the median is asymptotically optimal for the Laplace, and the MLE approaches the bound in every family as $n$ grows — slowly for the Laplace, whose MLE is the median.`,
     mount(el, ctx) {
       const { controls, stage, stats } = UI.layout(el);
       const fam = UI.segmented(controls, { label: 'Error distribution', options: Object.keys(LOCFAM).map(k => ({ value: k, label: LOCFAM[k].label })), value: 'logistic', onChange: draw });
