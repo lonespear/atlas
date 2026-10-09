@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Atlas · Statistical Theory &amp; Learning</title>
+  <meta name="description" content="An interactive field guide to probability, statistical inference, and machine learning.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232c56c9'/%3E%3Ctext x='16' y='23' font-family='Georgia' font-size='20' fill='white' text-anchor='middle'%3E%CE%A9%3C/text%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,400;1,9..144,500&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="vendor/katex/katex.min.css">
+  <link rel="stylesheet" href="css/atlas.css">
+  <script>
+    // Apply saved theme before first paint to avoid a flash.
+    try { const t = JSON.parse(localStorage.getItem('atlas:theme')); if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t); } catch (e) {}
+  </script>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar" id="sidebar">
+      <a class="brand" href="#/">
+        <div class="brand-mark">Ω</div>
+        <div><div class="brand-name">Atlas</div><div class="brand-sub">Statistical theory &amp; learning</div></div>
+      </a>
+      <button class="search-trigger" id="search-btn" type="button">⌕ <span>Search the Atlas</span><kbd>Ctrl K</kbd></button>
+      <nav class="nav-main">
+        <a class="nav-link" data-view="home" href="#/"><span class="ico">◎</span>Home</a>
+        <a class="nav-link" data-view="map" href="#/map"><span class="ico">⋰</span>Knowledge map</a>
+        <a class="nav-link" data-view="survey" href="#/survey"><span class="ico">▤</span>Method survey</a>
+        <a class="nav-link" data-view="progress" href="#/progress"><span class="ico">✓</span>Progress</a>
+      </nav>
+      <div class="nav-h">Fields</div>
+      <div id="nav-domains"></div>
+    </aside>
+
+    <main class="main">
+      <div class="topbar" id="topbar">
+        <button class="icon-btn menu-btn" id="menu-btn" type="button" aria-label="Open navigation">☰</button>
+        <div class="crumbs" id="crumbs"></div>
+        <div class="spacer"></div>
+        <button class="icon-btn" id="theme-btn" type="button" aria-label="Toggle theme">◐</button>
+      </div>
+      <div id="view" class="view"></div>
+    </main>
+  </div>
+
+  <div class="palette-back" id="palette">
+    <div class="palette" role="dialog" aria-label="Search">
+      <input type="text" placeholder="Search topics, theorems, methods…" autocomplete="off" spellcheck="false">
+      <div class="results"></div>
+    </div>
+  </div>
+
+  <!-- vendored libraries (work offline) -->
+  <script src="vendor/katex/katex.min.js"></script>
+  <script src="vendor/katex/auto-render.min.js"></script>
+  <script src="vendor/d3/d3.min.js"></script>
+
+  <!-- core -->
+  <script src="js/core/atlas.js"></script>
+  <script src="js/core/stats.js"></script>
+  <script src="js/core/plot.js"></script>
+  <script src="js/core/ui.js"></script>
+
+  <!-- content: one file per field -->
+  <script src="content/domains.js"></script>
+  <script src="content/foundations-1.js"></script>
+  <script src="content/foundations-2.js"></script>
+  <script src="content/inference-1.js"></script>
+  <script src="content/inference-2.js"></script>
+  <script src="content/regression.js"></script>
+  <script src="content/glm.js"></script>
+  <script src="content/nonparametric.js"></script>
+  <script src="content/stochastic-1.js"></script>
+  <script src="content/stochastic-2.js"></script>
+  <script src="content/simulation.js"></script>
+  <script src="content/mcmc.js"></script>
+  <script src="content/resampling.js"></script>
+  <script src="content/evt.js"></script>
+  <script src="content/supervised-1.js"></script>
+  <script src="content/supervised-2.js"></script>
+  <script src="content/unsupervised.js"></script>
+  <script src="content/deep-1.js"></script>
+  <script src="content/deep-2.js"></script>
+
+  <!-- labs: one file per field -->
+  <script src="js/labs/foundations-1.js"></script>
+  <script src="js/labs/foundations-2.js"></script>
+  <script src="js/labs/inference-1.js"></script>
+  <script src="js/labs/inference-2.js"></script>
+  <script src="js/labs/regression.js"></script>
+  <script src="js/labs/glm.js"></script>
+  <script src="js/labs/nonparametric.js"></script>
+  <script src="js/labs/stochastic-1.js"></script>
+  <script src="js/labs/stochastic-2.js"></script>
+  <script src="js/labs/simulation.js"></script>
+  <script src="js/labs/mcmc.js"></script>
+  <script src="js/labs/resampling.js"></script>
+  <script src="js/labs/evt.js"></script>
+  <script src="js/labs/supervised-1.js"></script>
+  <script src="js/labs/supervised-2.js"></script>
+  <script src="js/labs/unsupervised.js"></script>
+  <script src="js/labs/deep-1.js"></script>
+  <script src="js/labs/deep-2.js"></script>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
