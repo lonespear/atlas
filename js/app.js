@@ -288,8 +288,21 @@
 
     const path = A.pathTo(t.id).filter(x => x.id !== t.id);
     if (path.length) {
-      h('div', 'pathbox', art, `<b>Path to here</b> — the prerequisite chain in study order:
-        <div class="steps">${path.map((p, i) => `${i ? '<span class="arrow">→</span>' : ''}<a class="chip${isDone(p.id) ? '' : ''}" href="#/t/${p.id}" style="--dc:${A.domainMap[p.domain].color}">${isDone(p.id) ? '✓ ' : ''}${esc(p.title)}</a>`).join('')}</div>`);
+      const chip = (p, i) => `${i ? '<span class="arrow">→</span>' : ''}<a class="chip" href="#/t/${p.id}" style="--dc:${A.domainMap[p.domain].color}">${isDone(p.id) ? '✓ ' : ''}${esc(p.title)}</a>`;
+      const SHOW = 6;
+      const box = h('div', 'pathbox', art);
+      const draw = all => {
+        const list = all ? path : path.slice(-SHOW);
+        box.innerHTML = `<b>Path to here</b> — ${path.length} prerequisite topic${path.length > 1 ? 's' : ''} in study order${!all && path.length > SHOW ? ` (showing the nearest ${SHOW})` : ''}:
+          <div class="steps">${!all && path.length > SHOW ? '<span class="arrow">…</span>' : ''}${list.map(chip).join('')}</div>`;
+        if (path.length > SHOW) {
+          const b = A.UI.button(box, all ? 'Show fewer' : `Show all ${path.length}`, () => draw(!all), { small: true });
+          b.classList.add('btn-ghost');
+          b.style.marginTop = '8px';
+        }
+        math(box);
+      };
+      draw(false);
     }
 
     const prose = h('div', 'prose', art);
@@ -425,10 +438,12 @@
     defs.append('marker').attr('id', 'map-arrow').attr('viewBox', '0 -4 8 8').attr('refX', 15).attr('refY', 0).attr('markerWidth', 6).attr('markerHeight', 6).attr('orient', 'auto')
       .append('path').attr('d', 'M0,-4L8,0L0,4').attr('fill', 'var(--faint)');
     const g = svg.append('g');
-    svg.call(d3.zoom().scaleExtent([0.25, 4]).on('zoom', e => g.attr('transform', e.transform)));
+    // Topic labels appear only once zoomed in (or for the hovered neighbourhood) — 150 labels at once are unreadable.
+    const zoom = d3.zoom().scaleExtent([0.2, 5]).on('zoom', e => { g.attr('transform', e.transform); wrap.classList.toggle('zoomed', e.transform.k > 1.4); });
+    svg.call(zoom);
 
     const nD = A.domains.length;
-    const R = Math.min(W, H) * 0.36;
+    const R = 560; // world units; the view is zoomed to fit once the layout settles
     const center = {};
     A.domains.forEach((d, i) => { const a = -Math.PI / 2 + 2 * Math.PI * i / nD; center[d.id] = [R * Math.cos(a), R * Math.sin(a)]; });
     const nodes = A.topics.map(t => ({ id: t.id, t, d: t.domain, x: center[t.domain][0] + (Math.random() - 0.5) * 40, y: center[t.domain][1] + (Math.random() - 0.5) * 40 }));
@@ -487,7 +502,7 @@
     };
     nodeSel.on('mouseenter', (e, n) => {
       const nb = neighbours(n);
-      nodeSel.classed('dim', x => !nb.has(x.id));
+      nodeSel.classed('dim', x => !nb.has(x.id)).classed('hl', x => nb.has(x.id));
       linkSel.classed('dim', l => l.source.id !== n.id && l.target.id !== n.id).classed('hl', l => l.source.id === n.id || l.target.id === n.id);
       tip.style.display = 'block';
       tip.innerHTML = `<b>${n.t.title}</b>${esc(A.domainMap[n.d].title)}${n.t.subtitle ? ' — ' + n.t.subtitle : ''}`;
@@ -497,7 +512,7 @@
       tip.style.left = Math.min(r.width - 290, e.clientX - r.left + 14) + 'px';
       tip.style.top = (e.clientY - r.top + 14) + 'px';
     }).on('mouseleave', () => {
-      nodeSel.classed('dim', false); linkSel.classed('dim', false).classed('hl', false); tip.style.display = 'none';
+      nodeSel.classed('dim', false).classed('hl', false); linkSel.classed('dim', false).classed('hl', false); tip.style.display = 'none';
     });
 
     // domain filter legend
@@ -516,6 +531,15 @@
       });
     }
     h('div', 'map-hint', wrap, 'scroll to zoom · drag to pan · drag nodes');
+    // Zoom to fit the settled layout.
+    const fit = (dur) => {
+      const xs = nodes.map(n => n.x), ys = nodes.map(n => n.y);
+      const x0 = d3.min(xs) - 60, x1 = d3.max(xs) + 60, y0 = d3.min(ys) - 70, y1 = d3.max(ys) + 50;
+      const k = Math.min(W / (x1 - x0), H / (y1 - y0), 1.5);
+      svg.transition().duration(dur).call(zoom.transform, d3.zoomIdentity.scale(k).translate(-(x0 + x1) / 2, -(y0 + y1) / 2));
+    };
+    sim.on('end', () => fit(600));
+    setTimeout(() => fit(0), 50);
     viewCleanup.push(() => sim.stop());
   }
 
